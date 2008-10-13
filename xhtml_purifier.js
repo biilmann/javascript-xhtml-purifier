@@ -25,8 +25,8 @@
 
 (function(){
 
-	// Regular Expressions for parsing tags and attributes
-	var startTag = /^<(\w+)((?:\s+\w+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/,
+	// Regular Expressions for parsing tags and attributes (modified attribute name matcher, to catch xml:lang)
+	var startTag = /^<(\w+\:?\w*)((?:\s+[a-zA-Z_:-]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/,
 		endTag = /^<\/(\w+)[^>]*>/,
 		attr = /(\w+)(?:\s*=\s*(?:(?:"((?:\\.|[^"])*)")|(?:'((?:\\.|[^'])*)')|([^>\s]+)))?/g;
 		
@@ -57,7 +57,6 @@
 
 		while ( html ) {
 			chars = true;
-
 			// Make sure we're not in a script or style element
 			if ( !stack.last() || !special[ stack.last() ] ) {
 
@@ -194,127 +193,404 @@
 })();
 
 XHTMLPurifier = function() {
-  var result;
   var stack = [];
-  var reopen_after = {};
-
-  // For nesting rules used here - see: http://www.cs.tut.fi/~jkorpela/html/nesting.html
-  var allowed_elements = {
-    'p': {'contains': 'inline', 'flow': 'block'},
-    'a': {'contains': 'inline', 'excluding': {'a':true}, 'attributes': {'href':true,'name':true,'title':true, 'rel':true, 'rev':true}, 'flow': 'inline'},
-    'strong': {'contains': 'inline', 'flow': 'inline'},
-    'b': {'change_to': 'strong'},
-    'h1': {'change_to': ['p','strong']},
-    'h2': {'change_to': ['p','strong']},
-    'h3': {'change_to': ['p','strong']},
-    'h4': {'change_to': ['p','strong']},
-    'h5': {'change_to': ['p','strong']},
-    'h6': {'change_to': ['p','strong']},
-    'h7': {'change_to': ['p','strong']},
-    'em': {'contains': 'inline', 'flow': 'inline'},
-    'ul': {'contains': 'li', 'flow': 'block'},
-    'ol': {'contains': 'li', 'flow': 'block'},
-    'li': {'contains': 'flow', 'flow': 'block'},
-    'br': {'contains': false, 'flow': 'inline'},
-    'img': {'contains': false, 'attributes': {'src':true,'alt':true}, 'flow': 'inline'},
-    'blockquote': {'contains': 'flow', 'attributes': {'cite':true}, 'flow': 'block'},
-    'code': {'contains': 'inline', 'flow': 'inline'},
-    'pre': {'contains': 'inline', 'excluding': {'img': true}, 'flow': 'block'}
+  var active_elements = [];
+  var doc;
+  var root;
+  
+  var textContent = function(node) {
+    return node.textContent;
   };
   
-  function in_stack(tagName) {
-    for(var i=stack.length; i>0; i--) {
-      if(tagName == stack[i].name) {
+  var formatting_elements = {'a':true, 'em':true, 'strong':true};
+  var tags_with_implied_end = {'li':true, 'p':true};
+  var allowed_attributes = {
+      'a': {'href':true, 'title':true, 'name':true, 'rel':true, 'rev':true, 'type':true},
+    'blockquote': {'cite':true},
+    'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true}
+  };
+  
+  XHTMLPrettyPrinter = function() {
+    var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
+    var indent = false;
+    var indent_string = "  ";
+
+    function indentation(depth, switchOff) {
+      if(!indent) {
+        return "";
+      } 
+      if(switchOff) {
+        indent = false;
+      }
+      var result = "\n";
+      for(var i=0; i<depth; i++) {
+        result += indent_string;
+      }
+      return result;
+    }
+
+    function attributes(el) {
+      var result = "";
+      var allowed = allowed_attributes[el.tagName.toLowerCase()] || {};
+      for(var i=0, len=el.attributes.length; i<len; i++) {
+        if(allowed[el.attributes[i].nodeName.toLowerCase()] && el.attributes[i].nodeValue) {
+          result += " " + el.attributes[i].nodeName.toLowerCase() + '="' + el.attributes[i].nodeValue + '"';
+        }
+      }
+      return result;
+    }
+
+    function startTag(el) {
+      return "<" + el.tagName.toLowerCase() + attributes(el) + ">";
+    }
+
+    function endTag(el) {
+      return "</" + el.tagName.toLowerCase() + ">";
+    }
+
+    function emptyTag(el) {
+      return "<" + el.tagName.toLowerCase() + attributes(el) + " />";
+    }
+
+    function element(el, depth) {
+      if(el.nodeType == 3 && !el.nodeValue.match(/^\s*$/)) {
+        return indentation(depth || 0, true) + el.nodeValue;
+      } else if(el.nodeType != 1) {
+        return "";
+      }
+      var len = el.childNodes.length;
+      if(len == 0) {
+        if(empty_tags[el.tagName]) {
+          return indentation(depth || 0, true) + emptyTag(el);
+        }
+        indent = true;
+        return indentation(depth || 0) + startTag(el) + endTag(el);
+      } else {
+        indent = true;
+        var result = (depth === false ? "" : indentation(depth)) + startTag(el);
+        for(var i=0; i<len; i++) {
+          result += element(el.childNodes[i], (depth || 0) + 1);
+        }
+        indent = true;
+        return result + indentation(depth || 0) + endTag(el); 
+      }
+    }
+
+    return {
+      pretty_print: function(dom, indent_first_element) {
+        return element(dom, indent_first_element ? 0 : false);
+      }
+    };
+  }();  
+  
+  function init() {
+    doc = document;
+    root = doc.createElement('html');
+		var p = doc.createElement('p');
+		// Internet explorer doesn't support textContent
+		if(typeof(p.textContent) == 'undefined') {
+		  textContent = function(node) {
+		    return node.innerText;
+		  };
+		}
+		root.appendChild(p);
+    stack = [root, p];
+    active_elements = [];
+  }
+  
+  function last_el(list) {
+    var len = list.length;
+    if(len == 0) {
+      return null;
+    }
+    return list[len - 1];
+  }
+  
+  function in_array(arr, elem) {
+    for (var i = 0; i < arr.length; i++) {
+        if (arr[i] === elem) return true;
+    }
+    return false;
+  }
+  
+  function current_node() {
+    return last_el(stack) || doc;
+  }
+  
+  function reconstruct_active_formatting_elements() {
+    if(active_elements.length == 0 || in_array(stack, last_el(active_elements))) {
+      return;
+    }
+    var entry;
+    for(var i = active_elements.length; i>0; i--) {
+      entry = active_elements[i-1];
+      if(in_array(stack, entry)) {
+        break;
+      }
+    }
+    do {
+      var clone = entry.cloneNode(false);
+      current_node().appendChild(clone);
+      stack.push(clone);
+      active_elements[i] = clone;
+      i += 1;
+    } while(i != active_elements.length)
+  }
+  
+  function has_element_with(arr_of_elements, tagName) {
+    for(var i = arr_of_elements.length; i>0; i--) {
+      if(arr_of_elements[i-1].nodeName.toLowerCase() == tagName) {
         return true;
       }
     }
     return false;
   }
-
-  function stack_last() {
-    var len = stack.length;
-    return len > 0 ? stack[stack.length - 1] : null;
+  
+  function in_scope(tagName) {
+    return has_element_with(stack, tagName);
   }
-
-  function can_contain(parentName, childName) {
-    var parent = allowed_elements[parentName];
-    if(parent['excluding'] && parent['excluding'][childName]) {
-      return false;
+  
+  function insert_html_element_for(tagName, attrs) {
+    var node = doc.createElement(tagName);
+    if(allowed_attributes[tagName]) {
+      for(var i in attrs) {
+        var attr = attrs[i];
+        if(allowed_attributes[tagName][attr.name]){
+          node.setAttribute(attr.name, attr.value);
+        }
+      }
     }
-    if(parent.contains == 'flow' || parent.contains == childName) {
-        return true;
+    current_node().appendChild(node);
+    stack.push(node);
+    return node;
+  }
+  
+  function generate_implied_end_tags(exception) {
+    var tagName = current_node().tagName.toLowerCase();
+    while(tags_with_implied_end[tagName] && tagName != exception) {
+      end(tagName);
+      var tagName = current_node().tagName.toLowerCase();
     }
-    var child = allowed_elements[childName];
-    return parent.contains == child.flow;
   }
 
-  function chars(text) {
-    result += text;
+  // This function does not form part of the HTML5 specification
+  function remove_node_if_empty(node) {
+    if(node.getElementsByTagName("*").length == 0 && textContent(node).match(/^\s*$/g)) {
+      node.parentNode.removeChild(node);
+    }
   }
-
+  
+  function trim_to_1_space(str) {
+  	return str.replace(/^\s\s*|\s\s*$/, ' ');
+  }
+  
+  // This is a bit of a hack to convert entities without a complex regexp 
+  // will have to look into performace and possible memory leaks in IE
+  function html_entity_decode(str) {
+    var ta=document.createElement("textarea");
+    ta.innerHTML = str;
+    var result = ta.value;
+    delete(ta);
+    return result;
+  }
+  
   function start(tagName, attrs, unary) {
     tagName = tagName.toLowerCase();
-    var tag = allowed_elements[tagName];
-    var parent = stack_last();
-    if(tag) {
-      var change_to = tag['change_to'];
-      if(change_to) {
-        if(typeof(change_to) == 'string') {
-          tagName = change_to;
-        } else {
-          for(var i in change_to) {
-            start(change_to[i], [], false);
+    switch(tagName) {
+      case 'b':
+        start('strong');
+        return;
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+      case 'h5':
+      case 'h6':
+      case 'h7':
+        start('p');
+        start('strong');
+        return;
+      case 'blockquote':
+      case 'ol':
+      case 'p':
+      case 'ul':
+      case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
+        if(in_scope('p')) {
+          end('p');
+        }
+        insert_html_element_for(tagName, attrs);
+        return;
+      case 'li':
+        if(in_scope('p')) {
+          end('p');
+        }
+        var node = current_node();
+        while(node.tagName == 'LI') {
+          stack.pop();
+        }
+        insert_html_element_for(tagName, attrs);
+        return;
+      case 'a':
+        for(var i=active_elements.length; i>0; i--) {
+          if(active_elements[i-1].tagName == 'A') {
+            end('a');
+            active_elements.splice(i-1,1);
           }
-          return;
         }
-      }
-      result += ("<" + tagName);
-      for(var i in attrs) {
-        var attr  = attrs[i].name.toLowerCase();
-        var value = attrs[i].value;
-        if(tag['attributes'] && tag['attributes'][attr]) {
-          result += (" " + attr + '="' + value + '"');
-        }
-      }
-      if(unary) {
-        result += ' />';
-      } else {
-        result += '>';
-        stack.push({name: tagName, attrs: attrs, unary: unary});
-      }
+        reconstruct_active_formatting_elements();
+        var node = insert_html_element_for(tagName, attrs);
+        active_elements.push(node);
+        return;
+      case 'strong':
+      case 'em':
+        reconstruct_active_formatting_elements();
+        var node = insert_html_element_for(tagName, attrs);
+        active_elements.push(node);
+        return;
+      case 'br':
+      case 'img':
+        reconstruct_active_formatting_elements();
+        // These conditions for BR tags are not part of the HTML5 specification
+        //   but serve to make sure we don't add BR tags to empty elements and 
+        //   to make sure we create paragraphs instead of double BRs
+        if(tagName == 'br') { 
+          if(textContent(current_node()).match(/^\s*$/g)) {
+            return;
+          } 
+          if(current_node().lastChild && current_node().lastChild.tagName == 'BR') {
+            current_node().removeChild(current_node().lastChild);
+            start('p');
+            return;
+          }
+        } 
+        insert_html_element_for(tagName, attrs);
+        stack.pop();
+        return;
     }
   }
-
+  
   function end(tagName) {
-    if(typeof(tagName) == 'undefined' || tagName == null) {
+    if(typeof(tagName) == undefined) {
       return;
     }
     tagName = tagName.toLowerCase();
-    if(!allowed_elements[tagName]) {
-      return;
-    }
-    var change_to = allowed_elements[tagName]['change_to'];
-    if(change_to) {
-      if(typeof(change_to) == 'string'){
-        tagName = change_to;
-      } else {
-        for(var i=change_to.length; i>0; i--) {
-          end(change_to[i-1]);
+    switch(tagName) {
+      case 'b':
+        end('strong');
+        return;
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+      case 'h5':
+      case 'h6':
+      case 'h7':
+        end('strong');
+        end('p');
+        return;
+      case 'blockquote':
+      case 'ol':
+      case 'ul':
+      case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
+        if(in_scope(tagName)) {
+          generate_implied_end_tags();
+        }
+        if(in_scope(tagName)) {
+          do {
+            var node = stack.pop();
+          } while(node.tagName.toLowerCase() != tagName);
+          remove_node_if_empty(node);
         }
         return;
-      }
-    }    
-    curTag = stack.pop();
-    if(curTag.name != tagName && stack.length != 0) {
-      stack.push(curTag);
-      end(curTag.name);
+      case 'p':
+        if(in_scope(tagName)) {
+          generate_implied_end_tags(tagName);
+        }
+        var no_p_in_scope = true;
+        var node;
+        while(in_scope(tagName)) {
+          no_p_in_scope = false;
+          node = stack.pop();
+        }
+        if(no_p_in_scope) {
+          start('p',[],false);
+          end('p');
+        } else {
+          remove_node_if_empty(node);
+        }
+        return;
+      case 'li':
+        if(in_scope(tagName)) {
+          generate_implied_end_tags(tagName);
+        }
+        if(in_scope(tagName)) {
+          do {
+            var node = stack.pop();
+          } while(node.tagName.toLowerCase() != tagName);
+        }
+        return;
+      case 'a':
+      case 'em':
+      case 'strong':
+        var node;
+        for(var i=active_elements.length; i>0; i--) {
+          if(active_elements[i-1].tagName.toLowerCase() == tagName) {
+            node = active_elements[i-1];
+            break;
+          }
+        }
+        if(typeof(node) == 'undefined' || !in_array(stack, node)) {
+          return;
+        }
+        // Step 2 from the algorithm in the HTML5 spec will never be necessary with the tags we allow
+        do {
+          var popped_node = stack.pop();
+        } while(popped_node != node);
+        active_elements.splice(i-1, 1);
+        return;
+      default:
+        var node = current_node();
+        if(node.tagName.toLowerCase() == tagName) {
+          generate_implied_end_tags();
+          while(stack.length > 0 && node != current_node()) {
+            stack.pop();
+          }
+        }
     }
-    result += '</' + tagName + '>';
+  }
+  
+  function chars(text) {
+    if(typeof(text) == 'undefined') {
+      return;
+    }
+    console.log("Chars: %s end", text);
+    text = html_entity_decode(text).replace(/\n\s*\n\s*\n*/g,'\n\n').replace(/(^\n\n|\n\n$)/g,'');
+    console.log("text: %s end", text);
+    var paragraphs = text.split('\n\n');
+    if(paragraphs.length > 1) {
+      for(var i in paragraphs) {
+        start('p');
+        reconstruct_active_formatting_elements();
+        var trimmedText = trim_to_1_space(paragraphs[i]);
+        var textNode = doc.createTextNode(trimmedText);
+        current_node().appendChild(textNode);
+        end('p');
+      }
+    } else {
+      if(text.match(/^\s*$/g) && current_node().lastChild && current_node().lastChild.tagName == 'BR') {
+        return;
+      }
+      reconstruct_active_formatting_elements();
+      var trimmedText = trim_to_1_space(paragraphs[0]);
+      console.log("trimmedText: %s end", trimmedText);
+      var textNode = doc.createTextNode(trimmedText);
+      current_node().appendChild(textNode);      
+    }
   }
 
   return {
     purify: function(text) {
-      result = "";
+      init();
       try {
         HTMLParser(text, {
           start: start,
@@ -322,11 +598,14 @@ XHTMLPurifier = function() {
           chars: chars
         });
       } catch(e) {
-        throw e;
-        return result;
+        // We'll do nothing
       }
-      // Remove empty tags and return
-      return result.replace(/<(\w+)[^>]*>\s*<\/\1\s*>/g, '');
+      result = "";
+      for(var i=0, len=root.childNodes.length; i<len; i++) {
+        result += XHTMLPrettyPrinter.pretty_print(root.childNodes[i], i>0);
+      }
+      result = result.replace(/<(\w+)[^>]*>\s*<\/\1\s*>/g, '');
+      return result;
     }
   };
 }();

@@ -7,9 +7,19 @@
 
 	<title>xhtml_purifier</title>
 	<script src="xhtml_purifier.js" type="text/javascript" charset="utf-8"></script>
+	<script type="text/javascript" charset="utf-8">
+	 function clean() {
+	   var html = document.getElementById('html').value;
+	   var clean_html = XHTMLPurifier.purify(html);
+	   document.getElementById('clean_html').value = clean_html;
+	 }
+	</script>
 </head>
 
 <body>
+  <textarea id="html" name="html" rows="10" cols="80"></textarea>
+  <textarea id="clean_html" name="clean_html" rows="10" cols="80"></textarea>
   
+  <a href="#" onclick="clean(); false;">Clean HTML</a>
 </body>
 </html>
