@@ -1,0 +1,5 @@
+Javascript XHTML Purifier
+
+Usage: 
+XHTMLPurifier.purify(html);
+
