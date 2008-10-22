@@ -212,6 +212,7 @@ XHTMLPurifier = function() {
   
   XHTMLPrettyPrinter = function() {
     var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
+    var dont_indent_inside = {'STRONG':true, 'EM':true, 'A':true};
     var indent = false;
     var indent_string = "  ";
 
@@ -263,15 +264,15 @@ XHTMLPurifier = function() {
         if(empty_tags[el.tagName]) {
           return indentation(depth || 0, true) + emptyTag(el);
         }
-        indent = true;
+        indent = dont_indent_inside[el.tagName] ? indent : true;
         return indentation(depth || 0) + startTag(el) + endTag(el);
       } else {
-        indent = true;
-        var result = (depth === false ? "" : indentation(depth)) + startTag(el);
+        indent = dont_indent_inside[el.tagName] ? indent : true;
+        var result = (depth === false ? "" : indentation(depth, dont_indent_inside[el.tagName] ? true : false)) + startTag(el);
         for(var i=0; i<len; i++) {
           result += element(el.childNodes[i], (depth || 0) + 1);
         }
-        indent = true;
+        indent = dont_indent_inside[el.tagName] ? indent : true;
         return result + indentation(depth || 0) + endTag(el); 
       }
     }
@@ -381,7 +382,7 @@ XHTMLPurifier = function() {
   }
   
   function trim_to_1_space(str) {
-  	return str.replace(/^\s\s*|\s\s*$/, ' ');
+  	return str.replace(/^\s+/, ' ').replace(/\s+$/, ' ');
   }
   
   // This is a bit of a hack to convert entities without a complex regexp 
