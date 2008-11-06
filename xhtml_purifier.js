@@ -2,191 +2,20 @@
  * XHTML Purifier By Mathias Biilmann Christensen
  * Copyright Domestika 2008
  *
- * HTML Parser By John Resig (ejohn.org)
- * Original code by Erik Arvidsson, Mozilla Public License
- * http://erik.eae.net/simplehtmlparser/simplehtmlparser.js
- *
  */
 
-(function(){
-
-	// Regular Expressions for parsing tags and attributes (modified attribute name matcher, to catch xml:lang)
-	var startTag = /^<(\w+\:?\w*)((?:\s+[a-zA-Z_:-]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/,
-		endTag = /^<\/(\w+)[^>]*>/,
-		attr = /(\w+)(?:\s*=\s*(?:(?:"((?:\\.|[^"])*)")|(?:'((?:\\.|[^'])*)')|([^>\s]+)))?/g;
-		
-	// Empty Elements - HTML 4.01
-	var empty = makeMap("area,base,basefont,br,col,frame,hr,img,input,isindex,link,meta,param,embed");
-
-	// Block Elements - HTML 4.01
-	var block = makeMap("address,applet,blockquote,button,center,dd,del,dir,div,dl,dt,fieldset,form,frameset,hr,iframe,ins,isindex,li,map,menu,noframes,noscript,object,ol,p,pre,script,table,tbody,td,tfoot,th,thead,tr,ul");
-
-	// Inline Elements - HTML 4.01
-	var inline = makeMap("a,abbr,acronym,applet,b,basefont,bdo,big,br,button,cite,code,del,dfn,em,font,i,iframe,img,input,ins,kbd,label,map,object,q,s,samp,script,select,small,span,strike,strong,sub,sup,textarea,tt,u,var");
-
-	// Elements that you can, intentionally, leave open
-	// (and which close themselves)
-	var closeSelf = makeMap("colgroup,dd,dt,li,options,p,td,tfoot,th,thead,tr");
-
-	// Attributes that have their values filled in disabled="disabled"
-	var fillAttrs = makeMap("checked,compact,declare,defer,disabled,ismap,multiple,nohref,noresize,noshade,nowrap,readonly,selected");
-
-	// Special Elements (can contain anything)
-	var special = makeMap("script,style");
-
-	var HTMLParser = this.HTMLParser = function( html, handler ) {
-		var index, chars, match, stack = [], last = html;
-		stack.last = function(){
-			return this[ this.length - 1 ];
-		};
-
-		while ( html ) {
-			chars = true;
-			// Make sure we're not in a script or style element
-			if ( !stack.last() || !special[ stack.last() ] ) {
-
-				// Comment
-				if ( html.indexOf("<!--") == 0 ) {
-					index = html.indexOf("-->");
-	
-					if ( index >= 0 ) {
-						if ( handler.comment )
-							handler.comment( html.substring( 4, index ) );
-						html = html.substring( index + 3 );
-						chars = false;
-					}
-	
-				// end tag
-				} else if ( html.indexOf("</") == 0 ) {
-					match = html.match( endTag );
-	
-					if ( match ) {
-						html = html.substring( match[0].length );
-						match[0].replace( endTag, parseEndTag );
-						chars = false;
-					}
-	
-				// start tag
-				} else if ( html.indexOf("<") == 0 ) {
-					match = html.match( startTag );
-	
-					if ( match ) {
-						html = html.substring( match[0].length );
-						match[0].replace( startTag, parseStartTag );
-						chars = false;
-					}
-				}
-
-				if ( chars ) {
-					index = html.indexOf("<");
-					
-					var text = index < 0 ? html : html.substring( 0, index );
-					html = index < 0 ? "" : html.substring( index );
-					
-					if ( handler.chars )
-						handler.chars( text );
-				}
-
-			} else {
-				html = html.replace(new RegExp("(.*)<\/" + stack.last() + "[^>]*>"), function(all, text){
-					text = text.replace(/<!--(.*?)-->/g, "$1")
-						.replace(/<!\[CDATA\[(.*?)]]>/g, "$1");
-
-					if ( handler.chars )
-						handler.chars( text );
-
-					return "";
-				});
-
-				parseEndTag( "", stack.last() );
-			}
-
-			if ( html == last )
-				throw "Parse Error: " + html;
-			last = html;
-		}
-		
-		// Clean up any remaining tags
-		parseEndTag();
-
-		function parseStartTag( tag, tagName, rest, unary ) {
-			if ( block[ tagName ] ) {
-				while ( stack.last() && inline[ stack.last() ] ) {
-					parseEndTag( "", stack.last() );
-				}
-			}
-
-			if ( closeSelf[ tagName ] && stack.last() == tagName ) {
-				parseEndTag( "", tagName );
-			}
-
-			unary = empty[ tagName ] || !!unary;
-
-			if ( !unary )
-				stack.push( tagName );
-			
-			if ( handler.start ) {
-				var attrs = [];
-	
-				rest.replace(attr, function(match, name) {
-					var value = arguments[2] ? arguments[2] :
-						arguments[3] ? arguments[3] :
-						arguments[4] ? arguments[4] :
-						fillAttrs[name] ? name : "";
-					
-					attrs.push({
-						name: name,
-						value: value,
-						escaped: value.replace(/(^|[^\\])"/g, '$1\\\"') //"
-					});
-				});
-	
-				if ( handler.start )
-					handler.start( tagName, attrs, unary );
-			}
-		}
-
-		function parseEndTag( tag, tagName ) {
-			// If no tag name is provided, clean shop
-			if ( !tagName )
-				var pos = 0;
-				
-			// Find the closest opened tag of the same type
-			else
-				for ( var pos = stack.length - 1; pos >= 0; pos-- )
-					if ( stack[ pos ] == tagName )
-						break;
-			
-			if ( pos >= 0 ) {
-				// Close all the open elements, up the stack
-				for ( var i = stack.length - 1; i >= pos; i-- )
-					if ( handler.end )
-						handler.end( stack[ i ] );
-				
-				// Remove the open elements from the stack
-				stack.length = pos;
-			}
-		}
-	};
-	
-	function makeMap(str){
-		var obj = {}, items = str.split(",");
-		for ( var i = 0; i < items.length; i++ )
-			obj[ items[i] ] = true;
-		return obj;
-	}
-})();
-
 XHTMLPurifier = function() {
+  var allowHeaders = true;
+
   var stack = [];
   var active_elements = [];
   var doc;
   var root;
-  
+
   var textContent = function(node) {
     return node.textContent;
   };
-  
+
   var formatting_elements = {'a':true, 'em':true, 'strong':true};
   var tags_with_implied_end = {'li':true, 'p':true};
   var allowed_attributes = {
@@ -194,7 +23,7 @@ XHTMLPurifier = function() {
     'blockquote': {'cite':true},
     'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true}
   };
-  
+
   XHTMLPrettyPrinter = function() {
     var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
     var dont_indent_inside = {'STRONG':true, 'EM':true, 'A':true};
@@ -204,7 +33,7 @@ XHTMLPurifier = function() {
     function indentation(depth, switchOff) {
       if(!indent) {
         return "";
-      } 
+      }
       if(switchOff) {
         indent = false;
       }
@@ -258,7 +87,7 @@ XHTMLPurifier = function() {
           result += element(el.childNodes[i], (depth || 0) + 1);
         }
         indent = dont_indent_inside[el.tagName] ? indent : true;
-        return result + indentation(depth || 0) + endTag(el); 
+        return result + indentation(depth || 0) + endTag(el);
       }
     }
 
@@ -267,8 +96,8 @@ XHTMLPurifier = function() {
         return element(dom, indent_first_element ? 0 : false);
       }
     };
-  }();  
-  
+  }();
+
   function init() {
     doc = document;
     root = doc.createElement('html');
@@ -283,7 +112,7 @@ XHTMLPurifier = function() {
     stack = [root, p];
     active_elements = [];
   }
-  
+
   function last_el(list) {
     var len = list.length;
     if(len == 0) {
@@ -291,18 +120,18 @@ XHTMLPurifier = function() {
     }
     return list[len - 1];
   }
-  
+
   function in_array(arr, elem) {
     for (var i = 0; i < arr.length; i++) {
         if (arr[i] === elem) return true;
     }
     return false;
   }
-  
+
   function current_node() {
     return last_el(stack) || doc;
   }
-  
+
   function reconstruct_active_formatting_elements() {
     if(active_elements.length == 0 || in_array(stack, last_el(active_elements))) {
       return;
@@ -322,7 +151,7 @@ XHTMLPurifier = function() {
       i += 1;
     } while(i != active_elements.length)
   }
-  
+
   function has_element_with(arr_of_elements, tagName) {
     for(var i = arr_of_elements.length; i>0; i--) {
       if(arr_of_elements[i-1].nodeName.toLowerCase() == tagName) {
@@ -331,11 +160,11 @@ XHTMLPurifier = function() {
     }
     return false;
   }
-  
+
   function in_scope(tagName) {
     return has_element_with(stack, tagName);
   }
-  
+
   function insert_html_element_for(tagName, attrs) {
     var node = doc.createElement(tagName);
     if(allowed_attributes[tagName]) {
@@ -350,7 +179,7 @@ XHTMLPurifier = function() {
     stack.push(node);
     return node;
   }
-  
+
   function generate_implied_end_tags(exception) {
     var tagName = current_node().tagName.toLowerCase();
     while(tags_with_implied_end[tagName] && tagName != exception) {
@@ -365,12 +194,12 @@ XHTMLPurifier = function() {
       node.parentNode.removeChild(node);
     }
   }
-  
+
   function trim_to_1_space(str) {
   	return str.replace(/^\s+/, ' ').replace(/\s+$/, ' ');
   }
-  
-  // This is a bit of a hack to convert entities without a complex regexp 
+
+  // This is a bit of a hack to convert entities without a complex regexp
   // will have to look into performace and possible memory leaks in IE
   function html_entity_decode(str) {
     var ta=document.createElement("textarea");
@@ -379,7 +208,7 @@ XHTMLPurifier = function() {
     delete(ta);
     return result;
   }
-  
+
   function start(tagName, attrs, unary) {
     tagName = tagName.toLowerCase();
     switch(tagName) {
@@ -393,9 +222,11 @@ XHTMLPurifier = function() {
       case 'h5':
       case 'h6':
       case 'h7':
-        start('p');
-        start('strong');
-        return;
+        if(allowHeaders == false) {
+          start('p');
+          start('strong');
+          return;
+        }
       case 'blockquote':
       case 'ol':
       case 'p':
@@ -437,24 +268,24 @@ XHTMLPurifier = function() {
       case 'img':
         reconstruct_active_formatting_elements();
         // These conditions for BR tags are not part of the HTML5 specification
-        //   but serve to make sure we don't add BR tags to empty elements and 
+        //   but serve to make sure we don't add BR tags to empty elements and
         //   to make sure we create paragraphs instead of double BRs
-        if(tagName == 'br') { 
+        if(tagName == 'br') {
           if(textContent(current_node()).match(/^\s*$/g)) {
             return;
-          } 
+          }
           if(current_node().lastChild && current_node().lastChild.tagName == 'BR') {
             current_node().removeChild(current_node().lastChild);
             start('p');
             return;
           }
-        } 
+        }
         insert_html_element_for(tagName, attrs);
         stack.pop();
         return;
     }
   }
-  
+
   function end(tagName) {
     if(typeof(tagName) == undefined) {
       return;
@@ -471,8 +302,17 @@ XHTMLPurifier = function() {
       case 'h5':
       case 'h6':
       case 'h7':
-        end('strong');
-        end('p');
+        if(allowHeaders == false) {
+          end('strong');
+          end('p');
+          return;
+        }
+        if(in_scope(tagName)) {
+          generate_implied_end_tags();
+          do {
+            var node = stack.pop();
+          } while(node.tagName.toLowerCase() != tagName);
+        }
         return;
       case 'blockquote':
       case 'ol':
@@ -544,7 +384,7 @@ XHTMLPurifier = function() {
         }
     }
   }
-  
+
   function chars(text) {
     if(typeof(text) == 'undefined') {
       return;
@@ -570,7 +410,7 @@ XHTMLPurifier = function() {
       var trimmedText = trim_to_1_space(paragraphs[0]);
       console.log("trimmedText: %s end", trimmedText);
       var textNode = doc.createTextNode(trimmedText);
-      current_node().appendChild(textNode);      
+      current_node().appendChild(textNode);
     }
   }
 
@@ -595,3 +435,179 @@ XHTMLPurifier = function() {
     }
   };
 }();
+
+/*
+ * HTML Parser By John Resig (ejohn.org)
+ * Original code by Erik Arvidsson, Mozilla Public License
+ * http://erik.eae.net/simplehtmlparser/simplehtmlparser.js
+ *
+ */
+
+(function(){
+
+	// Regular Expressions for parsing tags and attributes (modified attribute name matcher, to catch xml:lang)
+	var startTag = /^<(\w+\:?\w*)((?:\s+[a-zA-Z_:-]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/,
+		endTag = /^<\/(\w+)[^>]*>/,
+		attr = /(\w+)(?:\s*=\s*(?:(?:"((?:\\.|[^"])*)")|(?:'((?:\\.|[^'])*)')|([^>\s]+)))?/g;
+
+	// Empty Elements - HTML 4.01
+	var empty = makeMap("area,base,basefont,br,col,frame,hr,img,input,isindex,link,meta,param,embed");
+
+	// Block Elements - HTML 4.01
+	var block = makeMap("address,applet,blockquote,button,center,dd,del,dir,div,dl,dt,fieldset,form,frameset,hr,iframe,ins,isindex,li,map,menu,noframes,noscript,object,ol,p,pre,script,table,tbody,td,tfoot,th,thead,tr,ul");
+
+	// Inline Elements - HTML 4.01
+	var inline = makeMap("a,abbr,acronym,applet,b,basefont,bdo,big,br,button,cite,code,del,dfn,em,font,i,iframe,img,input,ins,kbd,label,map,object,q,s,samp,script,select,small,span,strike,strong,sub,sup,textarea,tt,u,var");
+
+	// Elements that you can, intentionally, leave open
+	// (and which close themselves)
+	var closeSelf = makeMap("colgroup,dd,dt,li,options,p,td,tfoot,th,thead,tr");
+
+	// Attributes that have their values filled in disabled="disabled"
+	var fillAttrs = makeMap("checked,compact,declare,defer,disabled,ismap,multiple,nohref,noresize,noshade,nowrap,readonly,selected");
+
+	// Special Elements (can contain anything)
+	var special = makeMap("script,style");
+
+	var HTMLParser = this.HTMLParser = function( html, handler ) {
+		var index, chars, match, stack = [], last = html;
+		stack.last = function(){
+			return this[ this.length - 1 ];
+		};
+
+		while ( html ) {
+			chars = true;
+			// Make sure we're not in a script or style element
+			if ( !stack.last() || !special[ stack.last() ] ) {
+
+				// Comment
+				if ( html.indexOf("<!--") == 0 ) {
+					index = html.indexOf("-->");
+
+					if ( index >= 0 ) {
+						if ( handler.comment )
+							handler.comment( html.substring( 4, index ) );
+						html = html.substring( index + 3 );
+						chars = false;
+					}
+
+				// end tag
+				} else if ( html.indexOf("</") == 0 ) {
+					match = html.match( endTag );
+
+					if ( match ) {
+						html = html.substring( match[0].length );
+						match[0].replace( endTag, parseEndTag );
+						chars = false;
+					}
+
+				// start tag
+				} else if ( html.indexOf("<") == 0 ) {
+					match = html.match( startTag );
+
+					if ( match ) {
+						html = html.substring( match[0].length );
+						match[0].replace( startTag, parseStartTag );
+						chars = false;
+					}
+				}
+
+				if ( chars ) {
+					index = html.indexOf("<");
+
+					var text = index < 0 ? html : html.substring( 0, index );
+					html = index < 0 ? "" : html.substring( index );
+
+					if ( handler.chars )
+						handler.chars( text );
+				}
+
+			} else {
+				html = html.replace(new RegExp("(.*)<\/" + stack.last() + "[^>]*>"), function(all, text){
+					text = text.replace(/<!--(.*?)-->/g, "$1")
+						.replace(/<!\[CDATA\[(.*?)]]>/g, "$1");
+
+					if ( handler.chars )
+						handler.chars( text );
+
+					return "";
+				});
+
+				parseEndTag( "", stack.last() );
+			}
+
+			if ( html == last )
+				throw "Parse Error: " + html;
+			last = html;
+		}
+
+		// Clean up any remaining tags
+		parseEndTag();
+
+		function parseStartTag( tag, tagName, rest, unary ) {
+			if ( block[ tagName ] ) {
+				while ( stack.last() && inline[ stack.last() ] ) {
+					parseEndTag( "", stack.last() );
+				}
+			}
+
+			if ( closeSelf[ tagName ] && stack.last() == tagName ) {
+				parseEndTag( "", tagName );
+			}
+
+			unary = empty[ tagName ] || !!unary;
+
+			if ( !unary )
+				stack.push( tagName );
+
+			if ( handler.start ) {
+				var attrs = [];
+
+				rest.replace(attr, function(match, name) {
+					var value = arguments[2] ? arguments[2] :
+						arguments[3] ? arguments[3] :
+						arguments[4] ? arguments[4] :
+						fillAttrs[name] ? name : "";
+
+					attrs.push({
+						name: name,
+						value: value,
+						escaped: value.replace(/(^|[^\\])"/g, '$1\\\"') //"
+					});
+				});
+
+				if ( handler.start )
+					handler.start( tagName, attrs, unary );
+			}
+		}
+
+		function parseEndTag( tag, tagName ) {
+			// If no tag name is provided, clean shop
+			if ( !tagName )
+				var pos = 0;
+
+			// Find the closest opened tag of the same type
+			else
+				for ( var pos = stack.length - 1; pos >= 0; pos-- )
+					if ( stack[ pos ] == tagName )
+						break;
+
+			if ( pos >= 0 ) {
+				// Close all the open elements, up the stack
+				for ( var i = stack.length - 1; i >= pos; i-- )
+					if ( handler.end )
+						handler.end( stack[ i ] );
+
+				// Remove the open elements from the stack
+				stack.length = pos;
+			}
+		}
+	};
+
+	function makeMap(str){
+		var obj = {}, items = str.split(",");
+		for ( var i = 0; i < items.length; i++ )
+			obj[ items[i] ] = true;
+		return obj;
+	}
+})();
