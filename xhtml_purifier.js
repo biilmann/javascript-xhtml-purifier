@@ -11,11 +11,13 @@ XHTMLPurifier = function() {
   var active_elements = [];
   var doc;
   var root;
+  var insertion_mode;
 
   var textContent = function(node) {
     return node.textContent;
   };
 
+  var scope_markers = {'td':true, 'th': true, 'caption':true};
   var formatting_elements = {'a':true, 'em':true, 'strong':true};
   var tags_with_implied_end = {'li':true, 'p':true};
   var allowed_attributes = {
@@ -24,7 +26,7 @@ XHTMLPurifier = function() {
     'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true}
   };
 
-  XHTMLPrettyPrinter = function() {
+  var XHTMLPrettyPrinter = function() {
     var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
     var dont_indent_inside = {'STRONG':true, 'EM':true, 'A':true};
     var indent = false;
@@ -164,6 +166,18 @@ XHTMLPurifier = function() {
   function in_scope(tagName) {
     return has_element_with(stack, tagName);
   }
+  
+  function in_table_scope(tagName) {
+    for(var i = stack.length; i>0; i--) {
+      var nodeTag = stack[i-1].nodeName.toLowerCase();
+      if(nodeTag == tagName) {
+        return true;
+      } else if(nodeTag == 'table' || nodeTag == 'html') {
+        return false;
+      }
+    }
+    return false;
+  }
 
   function insert_html_element_for(tagName, attrs) {
     var node = doc.createElement(tagName);
@@ -208,181 +222,84 @@ XHTMLPurifier = function() {
     delete(ta);
     return result;
   }
-
-  function start(tagName, attrs, unary) {
-    tagName = tagName.toLowerCase();
-    switch(tagName) {
-      case 'b':
-        start('strong');
-        return;
-      case 'h1':
-      case 'h2':
-      case 'h3':
-      case 'h4':
-      case 'h5':
-      case 'h6':
-      case 'h7':
-        if(allowHeaders == false) {
-          start('p');
-          start('strong');
-          return;
-        }
-      case 'blockquote':
-      case 'ol':
-      case 'p':
-      case 'ul':
-      case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
-        if(in_scope('p')) {
-          end('p');
-        }
-        insert_html_element_for(tagName, attrs);
-        return;
-      case 'li':
-        if(in_scope('p')) {
-          end('p');
-        }
-        var node = current_node();
-        while(node.tagName == 'LI') {
-          stack.pop();
-        }
-        insert_html_element_for(tagName, attrs);
-        return;
-      case 'a':
-        for(var i=active_elements.length; i>0; i--) {
-          if(active_elements[i-1].tagName == 'A') {
-            end('a');
-            active_elements.splice(i-1,1);
-          }
-        }
-        reconstruct_active_formatting_elements();
-        var node = insert_html_element_for(tagName, attrs);
-        active_elements.push(node);
-        return;
-      case 'strong':
-      case 'em':
-        reconstruct_active_formatting_elements();
-        var node = insert_html_element_for(tagName, attrs);
-        active_elements.push(node);
-        return;
-      case 'br':
-      case 'img':
-        reconstruct_active_formatting_elements();
-        // These conditions for BR tags are not part of the HTML5 specification
-        //   but serve to make sure we don't add BR tags to empty elements and
-        //   to make sure we create paragraphs instead of double BRs
-        if(tagName == 'br') {
-          if(textContent(current_node()).match(/^\s*$/g)) {
-            return;
-          }
-          if(current_node().lastChild && current_node().lastChild.tagName == 'BR') {
-            current_node().removeChild(current_node().lastChild);
-            start('p');
-            return;
-          }
-        }
-        insert_html_element_for(tagName, attrs);
-        stack.pop();
-        return;
+  
+  function clear_stack_to_table_context() {
+    clear_stack_to_context_by_tags(['table', 'html']);
+  }
+  
+  function clear_stack_to_table_body_context() {
+    clear_stack_to_context_by_tags(['tbody', 'tfoot', 'thead', 'html']);
+  }
+  
+  function clear_stack_to_table_row_context() {
+    clear_stack_to_context_by_tags(['tr', 'html']);
+  }
+  
+  function clear_stack_to_context_by_tags(tags) {
+    while(!in_array(tags, current_node().tagName.toLowerCase())) {
+      stack.pop();
     }
   }
-
+  
+  function clear_active_elements_to_last_marker() {
+    do {
+      var entry = active_elements.pop();
+    } while(!scope_markers[entry.tagName.toLowerCase()]);
+  }
+  
+  function reset_insertion_mode() {
+    var context_node;
+    var last = false;
+    for (var i = stack.length - 1; i >= 0; i--){
+      if (stack[i] == stack[0]) {
+        last = true;
+      }
+      switch(node.tagName.toLowerCase()) {
+        case 'th':
+        case 'td':
+          if (!last) {
+            insertion_mode = InCell;
+            return;
+          }
+        case 'tr':
+          insertion_mode = InRow;
+          return;
+        case 'tbody':
+        case 'thead':
+        case 'tfoot':
+          insertion_mode = InTableBody;
+          return;
+        case 'caption':
+          insertion_mode = InCaption;
+          return;
+        case 'colgroup':
+          insertion_mode = InColumnGroup;
+          return;
+        case 'table':
+          insertion_mode = InTable;
+          return;
+      }
+      if (last) {
+        insertion_mode = InBody;
+        return;
+      }
+    };
+  }
+  
+  function close_the_cell() {
+    if (in_table_scope('td')) {
+      end('td');
+    } else {
+      end('th');
+    }
+  }
+  
+  function start(tagName, attrs, unary) {
+    insertion_mode.insertion_mode_start(tagName, attrs, unary);
+  }
+  
   function end(tagName) {
-    if(typeof(tagName) == undefined) {
-      return;
-    }
-    tagName = tagName.toLowerCase();
-    switch(tagName) {
-      case 'b':
-        end('strong');
-        return;
-      case 'h1':
-      case 'h2':
-      case 'h3':
-      case 'h4':
-      case 'h5':
-      case 'h6':
-      case 'h7':
-        if(allowHeaders == false) {
-          end('strong');
-          end('p');
-          return;
-        }
-        if(in_scope(tagName)) {
-          generate_implied_end_tags();
-          do {
-            var node = stack.pop();
-          } while(node.tagName.toLowerCase() != tagName);
-        }
-        return;
-      case 'blockquote':
-      case 'ol':
-      case 'ul':
-      case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
-        if(in_scope(tagName)) {
-          generate_implied_end_tags();
-        }
-        if(in_scope(tagName)) {
-          do {
-            var node = stack.pop();
-          } while(node.tagName.toLowerCase() != tagName);
-          remove_node_if_empty(node);
-        }
-        return;
-      case 'p':
-        if(in_scope(tagName)) {
-          generate_implied_end_tags(tagName);
-        }
-        var no_p_in_scope = true;
-        var node;
-        while(in_scope(tagName)) {
-          no_p_in_scope = false;
-          node = stack.pop();
-        }
-        if(no_p_in_scope) {
-          start('p',[],false);
-          end('p');
-        } else {
-          remove_node_if_empty(node);
-        }
-        return;
-      case 'li':
-        if(in_scope(tagName)) {
-          generate_implied_end_tags(tagName);
-        }
-        if(in_scope(tagName)) {
-          do {
-            var node = stack.pop();
-          } while(node.tagName.toLowerCase() != tagName);
-        }
-        return;
-      case 'a':
-      case 'em':
-      case 'strong':
-        var node;
-        for(var i=active_elements.length; i>0; i--) {
-          if(active_elements[i-1].tagName.toLowerCase() == tagName) {
-            node = active_elements[i-1];
-            break;
-          }
-        }
-        if(typeof(node) == 'undefined' || !in_array(stack, node)) {
-          return;
-        }
-        // Step 2 from the algorithm in the HTML5 spec will never be necessary with the tags we allow
-        do {
-          var popped_node = stack.pop();
-        } while(popped_node != node);
-        active_elements.splice(i-1, 1);
-        return;
-      default:
-        var node = current_node();
-        if(node.tagName.toLowerCase() == tagName) {
-          generate_implied_end_tags();
-          while(stack.length > 0 && node != current_node()) {
-            stack.pop();
-          }
-        }
-    }
+    insertion_mode.insertion_mode_end(tagName);
   }
 
   function chars(text) {
@@ -413,10 +330,552 @@ XHTMLPurifier = function() {
       current_node().appendChild(textNode);
     }
   }
+  
+  var InBody = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'b':
+          start('strong');
+          return;
+        case 'h1':
+        case 'h2':
+        case 'h3':
+        case 'h4':
+        case 'h5':
+        case 'h6':
+        case 'h7':
+          if(allowHeaders == false) {
+            start('p');
+            start('strong');
+            return;
+          }
+        case 'blockquote':
+        case 'ol':
+        case 'p':
+        case 'ul':
+        case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
+          if(in_scope('p')) {
+            end('p');
+          }
+          insert_html_element_for(tagName, attrs);
+          return;
+        case 'li':
+          if(in_scope('p')) {
+            end('p');
+          }
+          var node = current_node();
+          while(node.tagName == 'LI') {
+            stack.pop();
+          }
+          insert_html_element_for(tagName, attrs);
+          return;
+        case 'a':
+          for(var i=active_elements.length; i>0; i--) {
+            if(active_elements[i-1].tagName == 'A') {
+              end('a');
+              active_elements.splice(i-1,1);
+            }
+          }
+          reconstruct_active_formatting_elements();
+          var node = insert_html_element_for(tagName, attrs);
+          active_elements.push(node);
+          return;
+        case 'strong':
+        case 'em':
+          reconstruct_active_formatting_elements();
+          var node = insert_html_element_for(tagName, attrs);
+          active_elements.push(node);
+          return;
+        case 'table':
+          if (in_scope('p')) {
+            end('p');
+          }
+          insert_html_element_for(tagName, attrs);
+          insertion_mode = InTable;
+          return;
+        case 'br':
+        case 'img':
+          reconstruct_active_formatting_elements();
+          // These conditions for BR tags are not part of the HTML5 specification
+          //   but serve to make sure we don't add BR tags to empty elements and
+          //   to make sure we create paragraphs instead of double BRs
+          if(tagName == 'br') {
+            if(textContent(current_node()).match(/^\s*$/g)) {
+              return;
+            }
+            if(current_node().lastChild && current_node().lastChild.tagName == 'BR') {
+              current_node().removeChild(current_node().lastChild);
+              start('p');
+              return;
+            }
+          }
+          insert_html_element_for(tagName, attrs);
+          stack.pop();
+          return;
+      }
+    },
+
+    insertion_mode_end: function (tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'b':
+          end('strong');
+          return;
+        case 'h1':
+        case 'h2':
+        case 'h3':
+        case 'h4':
+        case 'h5':
+        case 'h6':
+        case 'h7':
+          if(allowHeaders == false) {
+            end('strong');
+            end('p');
+            return;
+          }
+          if(in_scope(tagName)) {
+            generate_implied_end_tags();
+            do {
+              var node = stack.pop();
+            } while(node.tagName.toLowerCase() != tagName);
+          }
+          return;
+        case 'blockquote':
+        case 'ol':
+        case 'ul':
+        case 'pre': // Techically PRE shouldn't be in this groups, since newlines should be ignored after a pre tag
+          if(in_scope(tagName)) {
+            generate_implied_end_tags();
+          }
+          if(in_scope(tagName)) {
+            do {
+              var node = stack.pop();
+            } while(node.tagName.toLowerCase() != tagName);
+            remove_node_if_empty(node);
+          }
+          return;
+        case 'p':
+          if(in_scope(tagName)) {
+            generate_implied_end_tags(tagName);
+          }
+          var no_p_in_scope = true;
+          var node;
+          while(in_scope(tagName)) {
+            no_p_in_scope = false;
+            node = stack.pop();
+          }
+          if(no_p_in_scope) {
+            start('p',[],false);
+            end('p');
+          } else {
+            remove_node_if_empty(node);
+          }
+          return;
+        case 'li':
+          if(in_scope(tagName)) {
+            generate_implied_end_tags(tagName);
+          }
+          if(in_scope(tagName)) {
+            do {
+              var node = stack.pop();
+            } while(node.tagName.toLowerCase() != tagName);
+          }
+          return;
+        case 'a':
+        case 'em':
+        case 'strong':
+          var node;
+          for(var i=active_elements.length; i>0; i--) {
+            if(active_elements[i-1].tagName.toLowerCase() == tagName) {
+              node = active_elements[i-1];
+              break;
+            }
+          }
+          if(typeof(node) == 'undefined' || !in_array(stack, node)) {
+            return;
+          }
+          // Step 2 from the algorithm in the HTML5 spec will never be necessary with the tags we allow
+          do {
+            var popped_node = stack.pop();
+          } while(popped_node != node);
+          active_elements.splice(i-1, 1);
+          return;
+        default:
+          var node = current_node();
+          if(node.tagName.toLowerCase() == tagName) {
+            generate_implied_end_tags();
+            while(stack.length > 0 && node != current_node()) {
+              stack.pop();
+            }
+          }
+      }
+    }
+  };
+  
+  var InTable = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'caption':
+          clear_stack_to_table_context();
+          active_elements.push(insert_html_element_for(tagName, attrs));
+          insertion_mode = InCaption;
+          return;
+        case 'colgroup':
+          clear_stack_to_table_context();
+          insert_html_element_for(tagName, attrs);
+          insertion_mode = InColumnGroup;
+          return;
+        case 'col':
+          start('colgroup');
+          start(tagName, attrs, unary);
+          return;
+        case 'tbody':
+        case 'tfoot':
+        case 'thead':
+          clear_stack_to_table_context();
+          insert_html_element_for(tagName, attrs);
+          insertion_mode = InTableBody;
+          return;
+        case 'td':
+        case 'th':
+        case 'tr':
+          start('tbody');
+          start(tagName, attrs, unary);
+          return;
+      };
+    },
+    
+    insertion_mode_end: function (tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'table':
+          if(in_table_scope('table')) {
+            do {
+              var node = stack.pop();
+            } while(node.tagName.toLowerCase() != 'table');
+          }
+          reset_insertion_mode();
+          return;
+      };
+    }
+  };
+  
+  var InCaption = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'caption':
+        case 'col':
+        case 'colgroup':
+        case 'tbody':
+        case 'td':
+        case 'tfoot':
+        case 'th':
+        case 'thead':
+        case 'tr':
+          end('caption');
+          start(tagName);
+          return;
+        default:
+          InBody.insertion_mode_start(tagName, attrs, unary);
+          return;
+      };
+    },
+    
+    insertion_mode_end: function(tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'caption':
+          if (in_table_scope('caption')) {
+            generate_implied_end_tags();
+            if (current_node().tagName.toLowerCase() == 'caption') {
+              do {
+                node = stack.pop();
+              } while(node.tagName.toLowerCase() != 'caption')
+              clear_active_elements_to_last_marker();
+              insertion_mode = InTable;
+            }
+          }
+          return;
+        case "body":
+        case "col":
+        case "colgroup":
+        case "html":
+        case "tbody":
+        case "td":
+        case "tfoot":
+        case "th":
+        case "thead":
+        case "tr":
+          return;
+        case 'table':
+          end('caption');
+          end('table');
+          return;
+        default:
+          InBody.insertion_mode_end(tagName);
+          return;
+      }; 
+    }
+  };
+  
+  var InColumnGroup = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'html':
+          InBody.insertion_mode_start(tagName, attrs, unary);
+          return;
+        case 'col':
+          insert_html_element_for(tagName, attrs);
+          stack.pop();
+          return;
+        default:
+          end('colgroup');
+          start(tagName);
+          return;
+      };
+    },
+    
+    insertion_mode_end: function(tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'colgroup':
+          if(current_node().tagName.toLowerCase() != 'html') {
+            stack.pop();
+            insertion_mode = InTable;
+          }
+          return;
+        case 'col':
+          return;
+        default:
+          end('colgroup');
+          end(tagName);
+          return;
+      }; 
+    }
+  };
+  
+  var InTableBody = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'tr':
+          clear_stack_to_table_body_context();
+          insert_html_element_for(tagName, attrs);
+          insertion_mode = InRow;
+          return;
+        case 'th':
+        case 'td':
+          start('tr');
+          start(tagName, attrs, unary);
+          return;
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "tbody":
+        case "tfoot":
+        case "thead":
+          if (in_table_scope('tbody') || in_table_scope('thead') || in_table_scope('tfoot')) {
+            clear_stack_to_table_body_context();
+            end(current_node().tagName.toLowerCase());
+            start(tagName, attrs, unary);
+          }
+          return;
+      };
+    },
+    
+    insertion_mode_end: function(tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'tbody':
+        case 'tfoot':
+        case 'thead':
+          if (in_table_scope(tagName)) {
+            clear_stack_to_table_body_context();
+            stack.pop();
+            insertion_mode = InTable;
+          }
+          return;
+        case 'table':
+          if (in_table_scope('tbody') || in_table_scope('thead') || in_table_scope('tfoot')) {
+            clear_stack_to_table_body_context();
+            end(current_node().tagName.toLowerCase());
+            end(tagName, attrs, unary);
+          }
+          return;
+        case "body":
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "html":
+        case "td":
+        case "th":
+        case "tr":
+          return;
+        default:
+          InTable.insertion_mode_end(tagName);
+          return;
+      }; 
+    }
+  };
+  
+  var InRow = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'th':
+        case 'td':
+          clear_stack_to_table_row_context();
+          var node = insert_html_element_for(tagName, attrs);
+          insertion_mode = InCell;
+          active_elements.push(node);
+          return;
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "tbody":
+        case "tfoot":
+        case "thead":
+        case "tr":
+          end('tr');
+          start(tagName, attrs, unary);
+          return;
+        default:
+          InTable.insertion_mode_start(tagName, attrs, unary);
+          return;
+      };
+    },
+    
+    insertion_mode_end: function(tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case 'tr':
+          if (in_table_scope(tagName)) {
+            clear_stack_to_table_row_context();
+            stack.pop();
+            insertion_mode = InTableBody;
+          }
+          return;
+        case 'table':
+          end('tr');
+          start(tagName, attrs, unary);
+          return;
+        case "tbody":
+        case "tfoot":
+        case "thead":
+          if (in_table_scope(tagName)) {
+            end('tr');
+            end(tagName);
+          }
+          return;
+        case "body":
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "html":
+        case "td":
+        case "th":
+          return;
+        default:
+          InTable.insertion_mode_end(tagName);
+          return;
+      }; 
+    }
+  };
+  
+  var InCell = {
+    insertion_mode_start: function (tagName, attrs, unary) {
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "tbody":
+        case "td":
+        case "tfoot":
+        case "th":
+        case "thead":
+        case "tr":
+          if (in_table_scope('td') || in_table_scope('th')) {
+            close_the_cell();
+            start(tagName, attrs, unary);
+          }
+          return;
+        default:
+          InBody.insertion_mode_start(tagName, attrs, unary);
+          return;
+      };
+    },
+    
+    insertion_mode_end: function(tagName) {
+      if(typeof(tagName) == undefined) {
+        return;
+      }
+      tagName = tagName.toLowerCase();
+      switch(tagName) {
+        case "td":
+        case "th":
+          if (in_table_scope(tagName)) {
+            generate_implied_end_tags();
+            if (current_node().tagName.toLowerCase() != tagName) {
+              return;
+            }
+            do {
+              var node = stack.pop();
+            } while(node.tagName.toLowerCase() != tagName);
+            
+            clear_active_elements_to_last_marker();
+            insertion_mode = InRow;
+          }
+          return;
+        case "body":
+        case "caption":
+        case "col":
+        case "colgroup":
+        case "html":
+          return;
+        case "table":
+        case "tbody":
+        case "tfoot":
+        case "thead":
+        case "tr":
+          if (in_table_scope(tagName)) {
+            close_the_cell();
+            end(tagName);
+          }
+          return;
+        default:
+          InBody.insertion_mode_end(tagName);
+          return;
+      }; 
+    }
+  };
 
   return {
     purify: function(text) {
       init();
+      insertion_mode = InBody;
       try {
         HTMLParser(text, {
           start: start,
