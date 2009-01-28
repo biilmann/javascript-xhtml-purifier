@@ -33,6 +33,13 @@ XHTMLPurifierTestCase = function() {
       assert.areEqual(expected, XHTMLPurifier.purify(html));
     },
     
+    testTableElementsOutsideTables: function() {
+      var html ="Hello <tr><td>World!</tr></td><table>Thingy</table>";
+      var expected = "<p>\n  Hello World!\n</p>\n<table>\n  Thingy\n</table>";
+      
+      assert.areEqual(expected, XHTMLPurifier.purify(html));
+    },
+    
     testSurroundingPs: function() {
       var html = 'this is a test';
       assert.areEqual('<p>\n  this is a test\n</p>', XHTMLPurifier.purify(html));
