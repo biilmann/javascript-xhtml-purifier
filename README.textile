@@ -25,6 +25,16 @@ h2. Allowed elements
 * a
 * img
 * br
+* table
+* caption
+* col
+* colgroup
+* tbody
+* td
+* tfoot
+* th
+* thead
+* tr
 
 All other elements will be stripped from the resulting XHTML, although the inner text will be left intact.
 
