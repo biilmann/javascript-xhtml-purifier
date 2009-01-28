@@ -40,6 +40,14 @@ XHTMLPurifierTestCase = function() {
       assert.areEqual(expected, XHTMLPurifier.purify(html));
     },
     
+    testTableWithTwoTbodysAndTFoot: function() {
+      var html ="<table><tbody><tr><td>Testing</td><tbody><tr><th>Another test</th></tr></tbody><tfoot><tr><td>Testing</td></tr></tfoot>";
+      var expected = "<table>\n  <tbody>\n    <tr>\n      <td>\n        Testing\n      </td>\n    </tr>\n  </tbody>\n  "+
+                     "<tbody>\n    <tr>\n      <th>\n        Another test\n      </th>\n    </tr>\n  </tbody>\n  "+
+                     "<tfoot>\n    <tr>\n      <td>\n        Testing\n      </td>\n    </tr>\n  </tfoot>\n</table>";
+      assert.areEqual(expected, XHTMLPurifier.purify(html));
+    },
+    
     testSurroundingPs: function() {
       var html = 'this is a test';
       assert.areEqual('<p>\n  this is a test\n</p>', XHTMLPurifier.purify(html));
