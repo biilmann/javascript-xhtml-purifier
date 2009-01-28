@@ -306,9 +306,7 @@ XHTMLPurifier = function() {
     if(typeof(text) == 'undefined') {
       return;
     }
-    console.log("Chars: %s end", text);
     text = html_entity_decode(text).replace(/\n\s*\n\s*\n*/g,'\n\n').replace(/(^\n\n|\n\n$)/g,'');
-    console.log("text: %s end", text);
     var paragraphs = text.split('\n\n');
     if(paragraphs.length > 1) {
       for(var i in paragraphs) {
@@ -325,7 +323,6 @@ XHTMLPurifier = function() {
       }
       reconstruct_active_formatting_elements();
       var trimmedText = trim_to_1_space(paragraphs[0]);
-      console.log("trimmedText: %s end", trimmedText);
       var textNode = doc.createTextNode(trimmedText);
       current_node().appendChild(textNode);
     }
