@@ -17,6 +17,11 @@ XHTMLPurifierTestCase = function() {
       html += "</table>";
       assert.areEqual(html, XHTMLPurifier.purify(html).replace(/\s+/g, ''));
     },
+
+    testEmptyTableWithPAfter: function () {
+      var html = "<table></table> <p>Hola</p>";
+      assert.areEqual("\n\n<p>\n  Hola\n</p>", XHTMLPurifier.purify(html));
+    },
     
     testBadTables: function() {
       var html = "<table>";

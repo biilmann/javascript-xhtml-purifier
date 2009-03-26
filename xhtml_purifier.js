@@ -1,5 +1,6 @@
 /*
  * XHTML Purifier By Mathias Biilmann Christensen
+ * and Rodrigo Alvarez
  * Copyright Domestika 2008
  *
  */
@@ -248,10 +249,10 @@ XHTMLPurifier = function() {
   }
   
   function reset_insertion_mode() {
-    var context_node;
     var last = false;
     for (var i = stack.length - 1; i >= 0; i--){
-      if (stack[i] == stack[0]) {
+      var node = stack[i];
+      if (node == stack[0]) {
         last = true;
       }
       switch(node.tagName.toLowerCase()) {
