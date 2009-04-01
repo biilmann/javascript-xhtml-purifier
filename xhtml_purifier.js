@@ -254,8 +254,9 @@ XHTMLPurifier = function() {
   
   function reset_insertion_mode() {
     var last = false;
+    var node;
     for (var i = stack.length - 1; i >= 0; i--){
-      var node = stack[i];
+      node = stack[i];
       if (node == stack[0]) {
         last = true;
       }
@@ -441,8 +442,9 @@ XHTMLPurifier = function() {
           }
           if(in_scope(tagName)) {
             generate_implied_end_tags();
+            var node;
             do {
-              var node = stack.pop();
+              node = stack.pop();
             } while(node.tagName.toLowerCase() != tagName);
           }
           return;
@@ -454,8 +456,9 @@ XHTMLPurifier = function() {
             generate_implied_end_tags();
           }
           if(in_scope(tagName)) {
+            var node;
             do {
-              var node = stack.pop();
+              node = stack.pop();
             } while(node.tagName.toLowerCase() != tagName);
             remove_node_if_empty(node);
           }
@@ -482,8 +485,9 @@ XHTMLPurifier = function() {
             generate_implied_end_tags(tagName);
           }
           if(in_scope(tagName)) {
+            var node;
             do {
-              var node = stack.pop();
+              node = stack.pop();
             } while(node.tagName.toLowerCase() != tagName);
           }
           return;
@@ -560,8 +564,9 @@ XHTMLPurifier = function() {
       switch(tagName) {
         case 'table':
           if(in_table_scope('table')) {
+            var node;
             do {
-              var node = stack.pop();
+              node = stack.pop();
             } while(node.tagName.toLowerCase() != 'table');
           }
           reset_insertion_mode();
@@ -602,8 +607,9 @@ XHTMLPurifier = function() {
           if (in_table_scope('caption')) {
             generate_implied_end_tags();
             if (current_node().tagName.toLowerCase() == 'caption') {
+              var node;
               do {
-                node = stack.pop();
+                 node = stack.pop();
               } while(node.tagName.toLowerCase() != 'caption')
               clear_active_elements_to_last_marker();
               insertion_mode = InTable;
@@ -843,8 +849,9 @@ XHTMLPurifier = function() {
             if (current_node().tagName.toLowerCase() != tagName) {
               return;
             }
+            var node;
             do {
-              var node = stack.pop();
+              node = stack.pop();
             } while(node.tagName.toLowerCase() != tagName);
             
             clear_active_elements_to_last_marker();
