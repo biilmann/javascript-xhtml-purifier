@@ -24,7 +24,11 @@ XHTMLPurifier = function() {
   var allowed_attributes = {
       'a': {'href':true, 'title':true, 'name':true, 'rel':true, 'rev':true, 'type':true},
     'blockquote': {'cite':true},
-    'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true}
+    'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true},
+    'td': {'colspan':true, 'class':true},
+    'th': {'colspan':true, 'class':true},
+    'tr': {'rowspan':true, 'class':true},
+    'table': {'class':true}
   };
 
   var XHTMLPrettyPrinter = function() {
