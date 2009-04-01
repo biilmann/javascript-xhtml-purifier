@@ -135,7 +135,7 @@ XHTMLPurifier = function() {
     return last_el(stack) || doc;
   }
 
-  function reconstruct_active_formatting_elements() {
+  function reconstruct_the_active_formatting_elements() {
     if(active_elements.length == 0 || in_array(stack, last_el(active_elements))) {
       return;
     }
@@ -312,7 +312,7 @@ XHTMLPurifier = function() {
     if(paragraphs.length > 1) {
       for(var i in paragraphs) {
         start('p');
-        reconstruct_active_formatting_elements();
+        reconstruct_the_active_formatting_elements();
         var trimmedText = trim_to_1_space(paragraphs[i]);
         var textNode = doc.createTextNode(trimmedText);
         current_node().appendChild(textNode);
@@ -322,7 +322,7 @@ XHTMLPurifier = function() {
       if(text.match(/^\s*$/g) && current_node().lastChild && current_node().lastChild.tagName == 'BR') {
         return;
       }
-      reconstruct_active_formatting_elements();
+      reconstruct_the_active_formatting_elements();
       var trimmedText = trim_to_1_space(paragraphs[0]);
       var textNode = doc.createTextNode(trimmedText);
       current_node().appendChild(textNode);
@@ -375,13 +375,13 @@ XHTMLPurifier = function() {
               active_elements.splice(i-1,1);
             }
           }
-          reconstruct_active_formatting_elements();
+          reconstruct_the_active_formatting_elements();
           var node = insert_html_element_for(tagName, attrs);
           active_elements.push(node);
           return;
         case 'strong':
         case 'em':
-          reconstruct_active_formatting_elements();
+          reconstruct_the_active_formatting_elements();
           var node = insert_html_element_for(tagName, attrs);
           active_elements.push(node);
           return;
@@ -394,7 +394,7 @@ XHTMLPurifier = function() {
           return;
         case 'br':
         case 'img':
-          reconstruct_active_formatting_elements();
+          reconstruct_the_active_formatting_elements();
           // These conditions for BR tags are not part of the HTML5 specification
           //   but serve to make sure we don't add BR tags to empty elements and
           //   to make sure we create paragraphs instead of double BRs
