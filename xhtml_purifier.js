@@ -22,14 +22,16 @@ XHTMLPurifier = function() {
   var formatting_elements = {'a':true, 'em':true, 'strong':true};
   var tags_with_implied_end = {'li':true, 'p':true};
   var allowed_attributes = {
-      'a': {'href':true, 'title':true, 'name':true, 'rel':true, 'rev':true, 'type':true},
-    'blockquote': {'cite':true},
-    'img': {'src':true, 'alt':true, 'title':true, 'longdesc':true},
-    'td': {'colspan':true, 'class':true},
-    'th': {'colspan':true, 'class':true},
-    'tr': {'rowspan':true, 'class':true},
-    'table': {'class':true}
+    'all_elements': ['class'],
+    'a': ['href', 'title', 'name', 'rel', 'rev', 'type'],
+    'blockquote': ['cite'],
+    'img': ['src', 'alt', 'title', 'longdesc'],
+    'td': ['colspan', 'class'],
+    'th': ['colspan', 'class'],
+    'tr': ['rowspan', 'class'],
+    'table': ['class']
   };
+  var allowed_attributes_as_hash;
 
   var XHTMLPrettyPrinter = function() {
     var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
@@ -53,10 +55,16 @@ XHTMLPurifier = function() {
 
     function attributes(el) {
       var result = "";
-      var allowed = allowed_attributes[el.tagName.toLowerCase()] || {};
+      var attr_name;
+      var allowed_for_tag = allowed_attributes_as_hash[el.tagName.toLowerCase()] || {};
+      var allowed_for_all = allowed_attributes_as_hash['all_elements'] || {};
       for(var i=0, len=el.attributes.length; i<len; i++) {
-        if(allowed[el.attributes[i].nodeName.toLowerCase()] && el.attributes[i].nodeValue) {
-          result += " " + el.attributes[i].nodeName.toLowerCase() + '="' + el.attributes[i].nodeValue + '"';
+        attr_name = el.attributes[i].nodeName.toLowerCase();
+        console.log("Attr " + attr_name);
+        console.log(allowed_for_tag);
+        console.log(allowed_for_all);
+        if((allowed_for_tag[attr_name] || allowed_for_all[attr_name]) && el.attributes[i].nodeValue) {
+          result += " " + attr_name + '="' + el.attributes[i].nodeValue + '"';
         }
       }
       return result;
@@ -108,17 +116,34 @@ XHTMLPurifier = function() {
   function init() {
     doc = document;
     root = doc.createElement('html');
-		var p = doc.createElement('p');
-		// Internet explorer doesn't support textContent
-		if(typeof(p.textContent) == 'undefined') {
-		  textContent = function(node) {
-		    return node.innerText;
-		  };
-		}
-		root.appendChild(p);
+    var p = doc.createElement('p');
+    // Internet explorer doesn't support textContent
+    if(typeof(p.textContent) == 'undefined') {
+      textContent = function(node) {
+        return node.innerText;
+      };
+    }
+    root.appendChild(p);
     stack = [root, p];
     active_elements = [];
+    allowed_attributes_as_hash = {};
+    var attr;
+    for(var key in allowed_attributes) {
+      allowed_attributes_as_hash[key] = {};
+      for(var i in allowed_attributes['all_elements']) {
+        attr = allowed_attributes['all_elements'][i];
+        allowed_attributes_as_hash[key][attr] = true;
+      }
+      if(key == 'all_elements') {
+        continue;
+      }
+      for(var i in allowed_attributes[key]) {
+        attr = allowed_attributes[key][i];
+        allowed_attributes_as_hash[key][attr] = true;
+      }
+    }
   }
+
 
   function last_el(list) {
     var len = list.length;
@@ -186,13 +211,9 @@ XHTMLPurifier = function() {
 
   function insert_html_element_for(tagName, attrs) {
     var node = doc.createElement(tagName);
-    if(allowed_attributes[tagName]) {
-      for(var i in attrs) {
-        var attr = attrs[i];
-        if(allowed_attributes[tagName][attr.name]){
-          node.setAttribute(attr.name, attr.value);
-        }
-      }
+    for(var i in attrs) {
+      var attr = attrs[i];
+      node.setAttribute(attr.name, attr.value);
     }
     current_node().appendChild(node);
     stack.push(node);
