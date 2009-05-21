@@ -60,9 +60,6 @@ XHTMLPurifier = function() {
       var allowed_for_all = allowed_attributes_as_hash['all_elements'] || {};
       for(var i=0, len=el.attributes.length; i<len; i++) {
         attr_name = el.attributes[i].nodeName.toLowerCase();
-        console.log("Attr " + attr_name);
-        console.log(allowed_for_tag);
-        console.log(allowed_for_all);
         if((allowed_for_tag[attr_name] || allowed_for_all[attr_name]) && el.attributes[i].nodeValue) {
           result += " " + attr_name + '="' + el.attributes[i].nodeValue + '"';
         }
@@ -89,7 +86,7 @@ XHTMLPurifier = function() {
         return "";
       }
       var len = el.childNodes.length;
-      if(len == 0) {
+      if(len === 0) {
         if(empty_tags[el.tagName]) {
           return indentation(depth || 0, true) + emptyTag(el);
         }
@@ -127,17 +124,17 @@ XHTMLPurifier = function() {
     stack = [root, p];
     active_elements = [];
     allowed_attributes_as_hash = {};
-    var attr;
+    var attr, i;
     for(var key in allowed_attributes) {
       allowed_attributes_as_hash[key] = {};
-      for(var i in allowed_attributes['all_elements']) {
+      for(i in allowed_attributes['all_elements']) {
         attr = allowed_attributes['all_elements'][i];
         allowed_attributes_as_hash[key][attr] = true;
       }
       if(key == 'all_elements') {
         continue;
       }
-      for(var i in allowed_attributes[key]) {
+      for(i in allowed_attributes[key]) {
         attr = allowed_attributes[key][i];
         allowed_attributes_as_hash[key][attr] = true;
       }
@@ -147,7 +144,7 @@ XHTMLPurifier = function() {
 
   function last_el(list) {
     var len = list.length;
-    if(len == 0) {
+    if(len === 0) {
       return null;
     }
     return list[len - 1];
@@ -165,7 +162,7 @@ XHTMLPurifier = function() {
   }
 
   function reconstruct_the_active_formatting_elements() {
-    if(active_elements.length == 0 || in_array(stack, last_el(active_elements))) {
+    if(active_elements.length === 0 || in_array(stack, last_el(active_elements))) {
       return;
     }
     var entry;
@@ -224,13 +221,13 @@ XHTMLPurifier = function() {
     var tagName = current_node().tagName.toLowerCase();
     while(tags_with_implied_end[tagName] && tagName != exception) {
       end(tagName);
-      var tagName = current_node().tagName.toLowerCase();
+      tagName = current_node().tagName.toLowerCase();
     }
   }
 
   // This function does not form part of the HTML5 specification
   function remove_node_if_empty(node) {
-    if(node.getElementsByTagName("*").length == 0 && textContent(node).match(/^\s*$/g)) {
+    if(node.getElementsByTagName("*").length === 0 && textContent(node).match(/^\s*$/g)) {
       node.parentNode.removeChild(node);
     }
   }
@@ -305,12 +302,13 @@ XHTMLPurifier = function() {
         case 'table':
           insertion_mode = InTable;
           return;
+        default:
+          if (last) {
+            insertion_mode = InBody;
+            return;
+          }
       }
-      if (last) {
-        insertion_mode = InBody;
-        return;
-      }
-    };
+    }
   }
   
   function close_the_cell() {
@@ -335,12 +333,13 @@ XHTMLPurifier = function() {
     }
     text = html_entity_decode(text).replace(/\n\s*\n\s*\n*/g,'\n\n').replace(/(^\n\n|\n\n$)/g,'');
     var paragraphs = text.split('\n\n');
+    var trimmedText, textNode;
     if(paragraphs.length > 1) {
       for(var i in paragraphs) {
         start('p');
         reconstruct_the_active_formatting_elements();
-        var trimmedText = trim_to_1_space(paragraphs[i]);
-        var textNode = doc.createTextNode(trimmedText);
+        trimmedText = trim_to_1_space(paragraphs[i]);
+        textNode = doc.createTextNode(trimmedText);
         current_node().appendChild(textNode);
         end('p');
       }
@@ -349,8 +348,8 @@ XHTMLPurifier = function() {
         return;
       }
       reconstruct_the_active_formatting_elements();
-      var trimmedText = trim_to_1_space(paragraphs[0]);
-      var textNode = doc.createTextNode(trimmedText);
+      trimmedText = trim_to_1_space(paragraphs[0]);
+      textNode = doc.createTextNode(trimmedText);
       current_node().appendChild(textNode);
     }
   }
@@ -362,6 +361,9 @@ XHTMLPurifier = function() {
         case 'b':
           start('strong');
           return;
+        case 'i':
+          start('em');
+          return;
         case 'h1':
         case 'h2':
         case 'h3':
@@ -369,7 +371,7 @@ XHTMLPurifier = function() {
         case 'h5':
         case 'h6':
         case 'h7':
-          if(allowHeaders == false) {
+          if(!allowHeaders) {
             start('p');
             start('strong');
             return;
@@ -449,6 +451,9 @@ XHTMLPurifier = function() {
         case 'b':
           end('strong');
           return;
+        case 'i':
+          end('em');
+          return;
         case 'h1':
         case 'h2':
         case 'h3':
@@ -456,7 +461,7 @@ XHTMLPurifier = function() {
         case 'h5':
         case 'h6':
         case 'h7':
-          if(allowHeaders == false) {
+          if(!allowHeaders) {
             end('strong');
             end('p');
             return;
@@ -574,7 +579,7 @@ XHTMLPurifier = function() {
           start('tbody');
           start(tagName, attrs, unary);
           return;
-      };
+      }
     },
     
     insertion_mode_end: function (tagName) {

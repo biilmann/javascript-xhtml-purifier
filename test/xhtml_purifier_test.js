@@ -65,10 +65,12 @@ XHTMLPurifierTestCase = function() {
 
     testHTMLWithBoldTags: function() {
       var html = 'Testing <b>some bold</b> and testing';
-      assert.areEqual(
-          '<p>\n  Testing <strong>some bold</strong> and testing\n</p>',
-          XHTMLPurifier.purify(html)
-          );
+      assert.areEqual('<p>\n  Testing <strong>some bold</strong> and testing\n</p>', XHTMLPurifier.purify(html));
+    },
+
+    testHTMLWithItalicsTags: function() {
+      var html = 'Testing <i>some italics</i> and testing';
+      assert.areEqual('<p>\n  Testing <em>some italics</em> and testing\n</p>', XHTMLPurifier.purify(html));      
     }
   });
 }();
