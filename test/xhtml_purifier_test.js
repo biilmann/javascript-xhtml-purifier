@@ -60,7 +60,7 @@ XHTMLPurifierTestCase = function() {
 
     testHTMLWithWeirdWordTags: function() {
       var html = '<ol><li><o:p></o:p><span>Hello, World!</span><o:p>&nbsp;</o:p></li></ol>';
-      assert.areEqual('<ol>\n    <li>\n        Hello, World!\n    </li>\n</ol>', XHTMLPurifier.purify(html));
+      assert.areEqual('<ol>\n    <li>\n        Hello, World! \n    </li>\n</ol>', XHTMLPurifier.purify(html));
     },
 
     testHTMLWithBoldTags: function() {

@@ -43,6 +43,31 @@ this.XHTMLPurifier = function() {
   };
   var indent = false;
   var indent_string = "    ";
+  var indentation = function(depth, switchOff) {
+    if (!indent) return "";
+    if (switchOff) indent = false;
+    var result = "\n";
+    for(var i=0; i<depth; i++) {
+      result += indent_string;
+    }
+    return result;
+  };
+
+  var TextNode = function(text) {
+    this.text = text;
+  };
+  
+  TextNode.prototype = {
+    isEmpty: function() {
+      return !this.text.match(/\S/);
+    },
+    toString: function() {
+      return indentation(this.depth(), true) + this.text.replace(/(&nbsp;)+/, ' ');
+    },
+    depth: function() {
+      return this.parent.depth() + 1;
+    }
+  };
 
   var Node = function(name) {
     this.name       = name;
@@ -101,12 +126,7 @@ this.XHTMLPurifier = function() {
     innerHTML: function() {
       var string = "";
       for (var i=0, len=this.children.length; i<len; i++) {
-        var child = this.children[i];
-        if (child instanceof Node) {
-          string += child;
-        } else {
-          string = child.match(/\S/) ? string + this.indent(this.depth() + 1, true) + child : string;
-        }
+        string += this.children[i];
       }
       return string;
     },
@@ -114,24 +134,15 @@ this.XHTMLPurifier = function() {
       var string = "";
       if (this.isEmpty()) {
         if (selfClosing[this.name]) {
-          string = this.indent(this.depth(), true) + this.selfClosingTag();
+          string = indentation(this.depth(), true) + this.selfClosingTag();
         }
       } else {
         indent = dontIndent[this.name] ? indent : true;
-        string = this.indent(this.depth(), dontIndent[this.name]) + this.startTag() + this.innerHTML();
+        string = indentation(this.depth(), dontIndent[this.name]) + this.startTag() + this.innerHTML();
         indent = dontIndent[this.name] ? indent : true;
-        string += this.indent(this.depth()) + this.endTag();
+        string += indentation(this.depth()) + this.endTag();
       }
       return string;
-    },
-    indent: function(depth, switchOff) {
-      if (!indent) return "";
-      if (switchOff) indent = false;
-      var result = "\n";
-      for(var i=0; i<depth; i++) {
-        result += indent_string;
-      }
-      return result;
     },
     depth: function() {
       return this.parent ? this.parent.depth() + 1 : -1;
@@ -140,11 +151,7 @@ this.XHTMLPurifier = function() {
       if (typeof(this._isEmpty) == "undefined") {
         this._isEmpty = true;
         for (var i=0, len=this.children.length; i<len; i++) {
-          var child = this.children[i];
-          if (child instanceof Node && !child.isEmpty()) {
-            this._isEmpty = false;
-            break;
-          } else if(child.match && child.match(/\S/)) {
+          if (!this.children[i].isEmpty()) {
             this._isEmpty = false;
             break;
           }
@@ -353,7 +360,7 @@ this.XHTMLPurifier = function() {
         start('p');
         reconstruct_the_active_formatting_elements();
         trimmedText = trim_to_1_space(paragraphs[i]);
-        current_node().appendChild(trimmedText);
+        current_node().appendChild(new TextNode(trimmedText));
         end('p');
       }
     } else {
@@ -362,7 +369,7 @@ this.XHTMLPurifier = function() {
       }
       reconstruct_the_active_formatting_elements();
       trimmedText = trim_to_1_space(paragraphs[0]);
-      current_node().appendChild(trimmedText);
+      current_node().appendChild(new TextNode(trimmedText));
     }
   }
   
