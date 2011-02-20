@@ -5,12 +5,11 @@
  *
  */
 
-XHTMLPurifier = function() {
+this.XHTMLPurifier = function() {
   var allowHeaders = true;
 
   var stack = [];
   var active_elements = [];
-  var doc;
   var root;
   var insertion_mode;
 
@@ -32,96 +31,132 @@ XHTMLPurifier = function() {
     'table': ['class']
   };
   var allowed_attributes_as_hash;
+  var selfClosing = {
+    br: true,
+    hr: true,
+    img: true
+  };
+  var dontIndent = {
+    strong: true,
+    em: true,
+    pre: true
+  };
+  var indent = false;
+  var indent_string = "    ";
 
-  var XHTMLPrettyPrinter = function() {
-    var empty_tags = {'BR': true, 'HR': true, 'INPUT': true, 'IMG': true};
-    var dont_indent_inside = {'STRONG':true, 'EM':true, 'A':true};
-    var indent = false;
-    var indent_string = "  ";
+  var Node = function(name) {
+    this.name       = name;
+    this.children   = [];
+    this.attributes = {};
+  };
+  
+  Node.prototype = {
+    appendChild: function(child) {
+      this.children.push(child);
+      child.parent = this;
+      return child;
+    },
+    removeChild: function(child) {
+      for (var i=0, len = this.children.length; i<len; i++) {
+        if (this.children[i] == child) {
+          return this.children.splice(i,i);
+        }
+      }
+      return null;
+    },
+    lastChild: function() {
+      return this.children[this.children.length - 1];
+    },
+    clone: function() {
+      var clone = new Node(this.name);
+      for (var i in this.attributes) {
+        clone.attributes[i] = this.attributes[i];
+      };
+      return clone;
+    },
+    startTag: function() {
+      return "<" + this.name + this.attributeString() + ">";
+    },
+    endTag: function() {
+      return "</" + this.name + ">";
+    },
+    selfClosingTag: function() {
+      return "<" + this.name + this.attributeString() + "/>";
+    },
+    attributeString: function() {
+      var string = "";
 
-    function indentation(depth, switchOff) {
-      if(!indent) {
-        return "";
+      var allowed_for_tag = allowed_attributes_as_hash[this.name] || {};
+      var allowed_for_all = allowed_attributes_as_hash['all_elements'] || {};
+      
+      for (var i=0, len=(this.attributes || []).length; i<len; i++) {
+        var name  = this.attributes[i].name;
+        var value = this.attributes[i].value;
+        if ((allowed_for_tag[name] || allowed_for_all[name]) && value) {
+          string += " " + name + "=\"" + value + "\"";
+        }
       }
-      if(switchOff) {
-        indent = false;
+      return string;
+    },
+    innerHTML: function() {
+      var string = "";
+      for (var i=0, len=this.children.length; i<len; i++) {
+        var child = this.children[i];
+        if (child instanceof Node) {
+          string += child;
+        } else {
+          string = child.match(/\S/) ? string + this.indent(this.depth() + 1, true) + child : string;
+        }
       }
+      return string;
+    },
+    toString: function() {
+      var string = "";
+      if (this.isEmpty()) {
+        if (selfClosing[this.name]) {
+          string = this.indent(this.depth(), true) + this.selfClosingTag();
+        }
+      } else {
+        indent = dontIndent[this.name] ? indent : true;
+        string = this.indent(this.depth(), dontIndent[this.name]) + this.startTag() + this.innerHTML();
+        indent = dontIndent[this.name] ? indent : true;
+        string += this.indent(this.depth()) + this.endTag();
+      }
+      return string;
+    },
+    indent: function(depth, switchOff) {
+      if (!indent) return "";
+      if (switchOff) indent = false;
       var result = "\n";
       for(var i=0; i<depth; i++) {
         result += indent_string;
       }
       return result;
-    }
-
-    function attributes(el) {
-      var result = "";
-      var attr_name;
-      var allowed_for_tag = allowed_attributes_as_hash[el.tagName.toLowerCase()] || {};
-      var allowed_for_all = allowed_attributes_as_hash['all_elements'] || {};
-      for(var i=0, len=el.attributes.length; i<len; i++) {
-        attr_name = el.attributes[i].nodeName.toLowerCase();
-        if((allowed_for_tag[attr_name] || allowed_for_all[attr_name]) && el.attributes[i].nodeValue) {
-          result += " " + attr_name + '="' + el.attributes[i].nodeValue + '"';
+    },
+    depth: function() {
+      return this.parent ? this.parent.depth() + 1 : -1;
+    },
+    isEmpty: function() {
+      if (typeof(this._isEmpty) == "undefined") {
+        this._isEmpty = true;
+        for (var i=0, len=this.children.length; i<len; i++) {
+          var child = this.children[i];
+          if (child instanceof Node && !child.isEmpty()) {
+            this._isEmpty = false;
+            break;
+          } else if(child.match && child.match(/\S/)) {
+            this._isEmpty = false;
+            break;
+          }
         }
       }
-      return result;
+      return this._isEmpty;
     }
-
-    function startTag(el) {
-      return "<" + el.tagName.toLowerCase() + attributes(el) + ">";
-    }
-
-    function endTag(el) {
-      return "</" + el.tagName.toLowerCase() + ">";
-    }
-
-    function emptyTag(el) {
-      return "<" + el.tagName.toLowerCase() + attributes(el) + " />";
-    }
-
-    function element(el, depth) {
-      if(el.nodeType == 3 && !el.nodeValue.match(/^\s*$/)) {
-        return indentation(depth || 0, true) + el.nodeValue;
-      } else if(el.nodeType != 1) {
-        return "";
-      }
-      var len = el.childNodes.length;
-      if(len === 0) {
-        if(empty_tags[el.tagName]) {
-          return indentation(depth || 0, true) + emptyTag(el);
-        }
-        indent = dont_indent_inside[el.tagName] ? indent : true;
-        return indentation(depth || 0) + startTag(el) + endTag(el);
-      } else {
-        indent = dont_indent_inside[el.tagName] ? indent : true;
-        var result = (depth === false ? "" : indentation(depth, dont_indent_inside[el.tagName] ? true : false)) + startTag(el);
-        for(var i=0; i<len; i++) {
-          result += element(el.childNodes[i], (depth || 0) + 1);
-        }
-        indent = dont_indent_inside[el.tagName] ? indent : true;
-        return result + indentation(depth || 0) + endTag(el);
-      }
-    }
-
-    return {
-      pretty_print: function(dom, indent_first_element) {
-        return element(dom, indent_first_element ? 0 : false);
-      }
-    };
-  }();
+  };
 
   function init() {
-    doc = document;
-    root = doc.createElement('html');
-    var p = doc.createElement('p');
-    // Internet explorer doesn't support textContent
-    if(typeof(p.textContent) == 'undefined') {
-      textContent = function(node) {
-        return node.innerText;
-      };
-    }
-    root.appendChild(p);
-    stack = [root, p];
+    root = new Node('html');
+    stack = [root, root.appendChild(new Node('p'))];
     active_elements = [];
     allowed_attributes_as_hash = {};
     var attr, i;
@@ -141,7 +176,6 @@ XHTMLPurifier = function() {
     }
   }
 
-
   function last_el(list) {
     var len = list.length;
     if(len === 0) {
@@ -158,7 +192,7 @@ XHTMLPurifier = function() {
   }
 
   function current_node() {
-    return last_el(stack) || doc;
+    return last_el(stack);
   }
 
   function reconstruct_the_active_formatting_elements() {
@@ -173,7 +207,7 @@ XHTMLPurifier = function() {
       }
     }
     do {
-      var clone = entry.cloneNode(false);
+      var clone = entry.clone();
       current_node().appendChild(clone);
       stack.push(clone);
       active_elements[i] = clone;
@@ -183,7 +217,7 @@ XHTMLPurifier = function() {
 
   function has_element_with(arr_of_elements, tagName) {
     for(var i = arr_of_elements.length; i>0; i--) {
-      if(arr_of_elements[i-1].nodeName.toLowerCase() == tagName) {
+      if(arr_of_elements[i-1].name == tagName) {
         return true;
       }
     }
@@ -196,7 +230,7 @@ XHTMLPurifier = function() {
   
   function in_table_scope(tagName) {
     for(var i = stack.length; i>0; i--) {
-      var nodeTag = stack[i-1].nodeName.toLowerCase();
+      var nodeTag = stack[i-1].name;
       if(nodeTag == tagName) {
         return true;
       } else if(nodeTag == 'table' || nodeTag == 'html') {
@@ -207,43 +241,23 @@ XHTMLPurifier = function() {
   }
 
   function insert_html_element_for(tagName, attrs) {
-    var node = doc.createElement(tagName);
-    for(var i in attrs) {
-      var attr = attrs[i];
-      node.setAttribute(attr.name, attr.value);
-    }
+    var node = new Node(tagName);
+    node.attributes = attrs;
     current_node().appendChild(node);
     stack.push(node);
     return node;
   }
 
   function generate_implied_end_tags(exception) {
-    var tagName = current_node().tagName.toLowerCase();
+    var tagName = current_node().name;
     while(tags_with_implied_end[tagName] && tagName != exception) {
       end(tagName);
-      tagName = current_node().tagName.toLowerCase();
-    }
-  }
-
-  // This function does not form part of the HTML5 specification
-  function remove_node_if_empty(node) {
-    if(node.getElementsByTagName("*").length === 0 && textContent(node).match(/^\s*$/g)) {
-      node.parentNode.removeChild(node);
+      tagName = current_node().name;
     }
   }
 
   function trim_to_1_space(str) {
   	return str.replace(/^\s+/, ' ').replace(/\s+$/, ' ');
-  }
-
-  // This is a bit of a hack to convert entities without a complex regexp
-  // will have to look into performace and possible memory leaks in IE
-  function html_entity_decode(str) {
-    var ta=document.createElement("textarea");
-    ta.innerHTML = str;
-    var result = ta.value;
-    delete(ta);
-    return result;
   }
   
   function clear_stack_to_table_context() {
@@ -259,7 +273,7 @@ XHTMLPurifier = function() {
   }
   
   function clear_stack_to_context_by_tags(tags) {
-    while(!in_array(tags, current_node().tagName.toLowerCase())) {
+    while(!in_array(tags, current_node().name)) {
       stack.pop();
     }
   }
@@ -267,7 +281,7 @@ XHTMLPurifier = function() {
   function clear_active_elements_to_last_marker() {
     do {
       var entry = active_elements.pop();
-    } while(!scope_markers[entry.tagName.toLowerCase()]);
+    } while(!scope_markers[entry.name]);
   }
   
   function reset_insertion_mode() {
@@ -278,7 +292,7 @@ XHTMLPurifier = function() {
       if (node == stack[0]) {
         last = true;
       }
-      switch(node.tagName.toLowerCase()) {
+      switch(node.name) {
         case 'th':
         case 'td':
           if (!last) {
@@ -331,7 +345,7 @@ XHTMLPurifier = function() {
     if(typeof(text) == 'undefined') {
       return;
     }
-    text = html_entity_decode(text).replace(/\n\s*\n\s*\n*/g,'\n\n').replace(/(^\n\n|\n\n$)/g,'');
+    text = text.replace(/\n\s*\n\s*\n*/g,'\n\n').replace(/(^\n\n|\n\n$)/g,'');
     var paragraphs = text.split('\n\n');
     var trimmedText, textNode;
     if(paragraphs.length > 1) {
@@ -339,23 +353,22 @@ XHTMLPurifier = function() {
         start('p');
         reconstruct_the_active_formatting_elements();
         trimmedText = trim_to_1_space(paragraphs[i]);
-        textNode = doc.createTextNode(trimmedText);
-        current_node().appendChild(textNode);
+        current_node().appendChild(trimmedText);
         end('p');
       }
     } else {
-      if(text.match(/^\s*$/g) && current_node().lastChild && current_node().lastChild.tagName == 'BR') {
+      if(text.match(/^\s*$/g) && current_node().children.length && current_node().lastChild().name == 'br') {
         return;
       }
       reconstruct_the_active_formatting_elements();
       trimmedText = trim_to_1_space(paragraphs[0]);
-      textNode = doc.createTextNode(trimmedText);
-      current_node().appendChild(textNode);
+      current_node().appendChild(trimmedText);
     }
   }
   
   var InBody = {
     insertion_mode_start: function (tagName, attrs, unary) {
+      var node;
       tagName = tagName.toLowerCase();
       switch(tagName) {
         case 'b':
@@ -390,27 +403,27 @@ XHTMLPurifier = function() {
           if(in_scope('p')) {
             end('p');
           }
-          var node = current_node();
-          while(node.tagName == 'LI') {
+          node = current_node();
+          while(node.name == 'li') {
             stack.pop();
           }
           insert_html_element_for(tagName, attrs);
           return;
         case 'a':
           for(var i=active_elements.length; i>0; i--) {
-            if(active_elements[i-1].tagName == 'A') {
+            if(active_elements[i-1].name == 'a') {
               end('a');
               active_elements.splice(i-1,1);
             }
           }
           reconstruct_the_active_formatting_elements();
-          var node = insert_html_element_for(tagName, attrs);
+          node = insert_html_element_for(tagName, attrs);
           active_elements.push(node);
           return;
         case 'strong':
         case 'em':
           reconstruct_the_active_formatting_elements();
-          var node = insert_html_element_for(tagName, attrs);
+          node = insert_html_element_for(tagName, attrs);
           active_elements.push(node);
           return;
         case 'table':
@@ -430,8 +443,8 @@ XHTMLPurifier = function() {
             if(textContent(current_node()).match(/^\s*$/g)) {
               return;
             }
-            if(current_node().lastChild && current_node().lastChild.tagName == 'BR') {
-              current_node().removeChild(current_node().lastChild);
+            if(current_node().children.length && current_node().lastChild().name == 'br') {
+              current_node().removeChild(current_node().lastChild());
               start('p');
               return;
             }
@@ -446,6 +459,7 @@ XHTMLPurifier = function() {
       if(typeof(tagName) == undefined) {
         return;
       }
+      var node;
       tagName = tagName.toLowerCase();
       switch(tagName) {
         case 'b':
@@ -468,10 +482,9 @@ XHTMLPurifier = function() {
           }
           if(in_scope(tagName)) {
             generate_implied_end_tags();
-            var node;
             do {
               node = stack.pop();
-            } while(node.tagName.toLowerCase() != tagName);
+            } while(node.name != tagName);
           }
           return;
         case 'blockquote':
@@ -482,11 +495,9 @@ XHTMLPurifier = function() {
             generate_implied_end_tags();
           }
           if(in_scope(tagName)) {
-            var node;
             do {
               node = stack.pop();
-            } while(node.tagName.toLowerCase() != tagName);
-            remove_node_if_empty(node);
+            } while(node.name != tagName);
           }
           return;
         case 'p':
@@ -494,7 +505,6 @@ XHTMLPurifier = function() {
             generate_implied_end_tags(tagName);
           }
           var no_p_in_scope = true;
-          var node;
           while(in_scope(tagName)) {
             no_p_in_scope = false;
             node = stack.pop();
@@ -502,8 +512,6 @@ XHTMLPurifier = function() {
           if(no_p_in_scope) {
             start('p',[],false);
             end('p');
-          } else {
-            remove_node_if_empty(node);
           }
           return;
         case 'li':
@@ -511,18 +519,16 @@ XHTMLPurifier = function() {
             generate_implied_end_tags(tagName);
           }
           if(in_scope(tagName)) {
-            var node;
             do {
               node = stack.pop();
-            } while(node.tagName.toLowerCase() != tagName);
+            } while(node.name != tagName);
           }
           return;
         case 'a':
         case 'em':
         case 'strong':
-          var node;
           for(var i=active_elements.length; i>0; i--) {
-            if(active_elements[i-1].tagName.toLowerCase() == tagName) {
+            if(active_elements[i-1].name == tagName) {
               node = active_elements[i-1];
               break;
             }
@@ -537,8 +543,8 @@ XHTMLPurifier = function() {
           active_elements.splice(i-1, 1);
           return;
         default:
-          var node = current_node();
-          if(node.tagName.toLowerCase() == tagName) {
+          node = current_node();
+          if(node.name == tagName) {
             generate_implied_end_tags();
             while(stack.length > 0 && node != current_node()) {
               stack.pop();
@@ -593,7 +599,7 @@ XHTMLPurifier = function() {
             var node;
             do {
               node = stack.pop();
-            } while(node.tagName.toLowerCase() != 'table');
+            } while(node.name != 'table');
           }
           reset_insertion_mode();
           return;
@@ -632,11 +638,11 @@ XHTMLPurifier = function() {
         case 'caption':
           if (in_table_scope('caption')) {
             generate_implied_end_tags();
-            if (current_node().tagName.toLowerCase() == 'caption') {
+            if (current_node().name == 'caption') {
               var node;
               do {
                  node = stack.pop();
-              } while(node.tagName.toLowerCase() != 'caption')
+              } while(node.name != 'caption')
               clear_active_elements_to_last_marker();
               insertion_mode = InTable;
             }
@@ -689,7 +695,7 @@ XHTMLPurifier = function() {
       tagName = tagName.toLowerCase();
       switch(tagName) {
         case 'colgroup':
-          if(current_node().tagName.toLowerCase() != 'html') {
+          if(current_node().name != 'html') {
             stack.pop();
             insertion_mode = InTable;
           }
@@ -726,7 +732,7 @@ XHTMLPurifier = function() {
         case "thead":
           if (in_table_scope('tbody') || in_table_scope('thead') || in_table_scope('tfoot')) {
             clear_stack_to_table_body_context();
-            end(current_node().tagName.toLowerCase());
+            end(current_node().name);
             start(tagName, attrs, unary);
           }
           return;
@@ -751,7 +757,7 @@ XHTMLPurifier = function() {
         case 'table':
           if (in_table_scope('tbody') || in_table_scope('thead') || in_table_scope('tfoot')) {
             clear_stack_to_table_body_context();
-            end(current_node().tagName.toLowerCase());
+            end(current_node().name);
             end(tagName, attrs, unary);
           }
           return;
@@ -872,13 +878,13 @@ XHTMLPurifier = function() {
         case "th":
           if (in_table_scope(tagName)) {
             generate_implied_end_tags();
-            if (current_node().tagName.toLowerCase() != tagName) {
+            if (current_node().name != tagName) {
               return;
             }
             var node;
             do {
               node = stack.pop();
-            } while(node.tagName.toLowerCase() != tagName);
+            } while(node.name != tagName);
             
             clear_active_elements_to_last_marker();
             insertion_mode = InRow;
@@ -917,15 +923,8 @@ XHTMLPurifier = function() {
           end: end,
           chars: chars
         });
-      } catch(e) {
-        // We'll do nothing
-      }
-      result = "";
-      for(var i=0, len=root.childNodes.length; i<len; i++) {
-        result += XHTMLPrettyPrinter.pretty_print(root.childNodes[i], i>0);
-      }
-      result = result.replace(/<(\w+)[^>]*>\s*<\/\1\s*>/g, '');
-      return result;
+      } catch(e) {}
+      return root.innerHTML().replace(/^\s+/, '');
     }
   };
 }();
