@@ -62,7 +62,9 @@ this.XHTMLPurifier = function() {
       return !this.text.match(/\S/);
     },
     toString: function() {
-      return indentation(this.depth(), true) + this.text.replace(/(&nbsp;)+/, ' ');
+      return this.isEmpty() ?
+        "" :
+        indentation(this.depth(), true) + this.text.replace(/(&nbsp;)+/, ' ');
     },
     depth: function() {
       return this.parent.depth() + 1;
