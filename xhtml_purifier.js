@@ -13,10 +13,6 @@ this.XHTMLPurifier = function() {
   var root;
   var insertion_mode;
 
-  var textContent = function(node) {
-    return node.textContent;
-  };
-
   var scope_markers = {'td':true, 'th': true, 'caption':true};
   var formatting_elements = {'a':true, 'em':true, 'strong':true};
   var tags_with_implied_end = {'li':true, 'p':true};
@@ -60,6 +56,9 @@ this.XHTMLPurifier = function() {
   TextNode.prototype = {
     isEmpty: function() {
       return !this.text.match(/\S/);
+    },
+    textContent: function() {
+      return this.text;
     },
     toString: function() {
       return this.isEmpty() ?
@@ -131,6 +130,15 @@ this.XHTMLPurifier = function() {
         string += this.children[i];
       }
       return string;
+    },
+    textContent: function() {
+      var text = "";
+      for (var i=0, len=this.children.length; i<len; i++) {
+        if (this.children[i] instanceof TextNode) {
+          text += this.children[i].text;
+        }
+      }
+      return text;
     },
     toString: function() {
       var string = "";
@@ -449,7 +457,8 @@ this.XHTMLPurifier = function() {
           //   but serve to make sure we don't add BR tags to empty elements and
           //   to make sure we create paragraphs instead of double BRs
           if(tagName == 'br') {
-            if(textContent(current_node()).match(/^\s*$/g)) {
+            
+            if(current_node().textContent().match(/^\s*$/g)) {
               return;
             }
             if(current_node().children.length && current_node().lastChild().name == 'br') {
@@ -926,13 +935,11 @@ this.XHTMLPurifier = function() {
     purify: function(text) {
       init();
       insertion_mode = InBody;
-      try {
-        HTMLParser(text, {
-          start: start,
-          end: end,
-          chars: chars
-        });
-      } catch(e) {}
+      HTMLParser(text, {
+        start: start,
+        end: end,
+        chars: chars
+      });
       return root.innerHTML().replace(/^\s+/, '');
     }
   };
